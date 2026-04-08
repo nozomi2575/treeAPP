@@ -13,32 +13,57 @@
   <video id="webcam" autoplay playsinline width="300"></video>
   <div id="label-container"></div>
 
-  <!-- ★必ず閉じる -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
 
   <script>
     const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
-    let model, webcam;
+    let model, video;
 
     document.getElementById("startBtn").addEventListener("click", async () => {
       try {
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
 
+        // モデル読み込み
         model = await tmImage.load(modelURL, metadataURL);
 
-        webcam = new tmImage.Webcam(300, 300, false);
-        await webcam.setup({ facingMode: "environment" });
-        await webcam.play();
+        // カメラ取得（バックカメラ）
+        video = document.getElementById("webcam");
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" }
+        });
 
-        document.getElementById("webcam").srcObject = webcam.webcam.srcObject;
+        video.srcObject = stream;
+
+        // 判定ループ開始
+        loop();
 
       } catch (e) {
-        alert(e);
+        alert("エラー：" + e);
+        console.error(e);
       }
     });
+
+    async function loop() {
+      if (video.readyState === 4) {
+        const prediction = await model.predict(video);
+
+        let best = prediction[0];
+        for (let i = 1; i < prediction.length; i++) {
+          if (prediction[i].probability > best.probability) {
+            best = prediction[i];
+          }
+        }
+
+        document.getElementById("label-container").innerHTML =
+          "<h1>" + best.className + "</h1>" +
+          "<h2>" + (best.probability * 100).toFixed(1) + "%</h2>";
+      }
+
+      requestAnimationFrame(loop);
+    }
   </script>
 </body>
 </html>
