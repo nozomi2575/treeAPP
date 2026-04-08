@@ -10,7 +10,7 @@
   <button id="startBtn">開始</button>
   <br><br>
 
-  <video id="webcam" autoplay playsinline width="300"></video>
+  <video id="webcam" playsinline width="300"></video>
   <div id="label-container"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
@@ -32,28 +32,31 @@
 
         video = document.getElementById("webcam");
 
-        // ★① まず適当にカメラ起動（ここ重要）
-        let stream = await navigator.mediaDevices.getUserMedia({
-          video: true
+        // カメラ取得（まずは確実に取る）
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
         });
 
         video.srcObject = stream;
 
-        // ★② カメラ一覧取得（許可後なら取れる）
+        // ★ここが超重要（iPhone対策）
+        await video.play();
+
+        // バックカメラに再取得（できれば）
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(d => d.kind === "videoinput");
 
-        console.log("カメラ一覧:", videoDevices);
+        if (videoDevices.length > 1) {
+          const backCamera = videoDevices[videoDevices.length - 1];
 
-        // ★③ 背面カメラを選択
-        let backCamera = videoDevices[videoDevices.length - 1];
+          const backStream = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: backCamera.deviceId } }
+          });
 
-        // ★④ 背面カメラで再取得
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: backCamera.deviceId }
-        });
-
-        video.srcObject = stream;
+          video.srcObject = backStream;
+          await video.play();
+        }
 
         loop();
 
