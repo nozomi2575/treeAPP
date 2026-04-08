@@ -1,15 +1,73 @@
 <!DOCTYPE html>
 <html>
+<head>
+  <meta charset="utf-8">
+  <title>樹皮判別</title>
+</head>
+
 <body>
-<button onclick="test()">テスト</button>
+  <h2>樹皮判別アプリ</h2>
+  <button id="startBtn">開始</button>
+  <br><br>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+  <video id="webcam" playsinline width="300"></video>
+  <div id="label-container"></div>
 
-<script>
-function test() {
-  alert("tmImage: " + typeof tmImage);
-}
-</script>
+  <!-- ★固定バージョン（ここが重要） -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+
+  <script>
+    const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
+
+    let model, video;
+
+    document.getElementById("startBtn").addEventListener("click", init);
+
+    async function init() {
+      try {
+        const modelURL = URL + "model.json";
+        const metadataURL = URL + "metadata.json";
+
+        model = await tmImage.load(modelURL, metadataURL);
+
+        video = document.getElementById("webcam");
+
+        // カメラ起動
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        loop();
+
+      } catch (e) {
+        alert("エラー：" + e);
+        console.error(e);
+      }
+    }
+
+    async function loop() {
+      if (video.readyState === 4) {
+        const prediction = await model.predict(video);
+
+        let best = prediction[0];
+        for (let i = 1; i < prediction.length; i++) {
+          if (prediction[i].probability > best.probability) {
+            best = prediction[i];
+          }
+        }
+
+        document.getElementById("label-container").innerHTML =
+          "<h1>" + best.className + "</h1>" +
+          "<h2>" + (best.probability * 100).toFixed(1) + "%</h2>";
+      }
+
+      requestAnimationFrame(loop);
+    }
+  </script>
 </body>
 </html>
