@@ -12,34 +12,34 @@
   <video id="webcam" autoplay playsinline width="300"></video>
   <div id="label-container"></div>
 
-  <!-- ライブラリ（順番重要） -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
+  <!-- ★defer付きが重要 -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest" defer></script>
 
   <script>
-    // ★ここだけ自分のURLに変更（最後に / 必須）
     const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
     let model, webcam, labelContainer, maxPredictions;
 
-    // ボタン押したら実行（タイミング問題回避）
-    document.getElementById("startBtn").addEventListener("click", async () => {
+    window.addEventListener("load", () => {
+      document.getElementById("startBtn").addEventListener("click", init);
+    });
+
+    async function init() {
       try {
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
 
-        // モデル読み込み
+        // ★ここでtmImageが確実に使える状態になる
         model = await tmImage.load(modelURL, metadataURL);
 
-        // カメラ設定（バックカメラ固定）
         webcam = new tmImage.Webcam(300, 300, false);
+
         await webcam.setup({ facingMode: "environment" });
         await webcam.play();
 
-        // 映像表示
         document.getElementById("webcam").srcObject = webcam.webcam.srcObject;
 
-        // ラベル準備
         labelContainer = document.getElementById("label-container");
         maxPredictions = model.getTotalClasses();
 
@@ -47,19 +47,18 @@
           labelContainer.appendChild(document.createElement("div"));
         }
 
-        // ループ開始
-        window.requestAnimationFrame(loop);
+        loop();
 
       } catch (e) {
         alert("エラー：" + e);
         console.error(e);
       }
-    });
+    }
 
     async function loop() {
       webcam.update();
       await predict();
-      window.requestAnimationFrame(loop);
+      requestAnimationFrame(loop);
     }
 
     async function predict() {
