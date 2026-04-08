@@ -25,38 +25,36 @@
 
     async function init() {
       try {
-        // モデル読み込み
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
+
         model = await tmImage.load(modelURL, metadataURL);
 
         video = document.getElementById("webcam");
 
-        // カメラ一覧取得
+        // ★① まず適当にカメラ起動（ここ重要）
+        let stream = await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
+
+        video.srcObject = stream;
+
+        // ★② カメラ一覧取得（許可後なら取れる）
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(d => d.kind === "videoinput");
 
         console.log("カメラ一覧:", videoDevices);
 
-        // 背面カメラを探す（iPhone対策）
-        let backCamera = videoDevices.find(d =>
-          d.label.toLowerCase().includes("back") ||
-          d.label.toLowerCase().includes("rear")
-        );
+        // ★③ 背面カメラを選択
+        let backCamera = videoDevices[videoDevices.length - 1];
 
-        // 見つからない場合は最後のカメラを使う
-        if (!backCamera) {
-          backCamera = videoDevices[videoDevices.length - 1];
-        }
-
-        // カメラ起動
-        const stream = await navigator.mediaDevices.getUserMedia({
+        // ★④ 背面カメラで再取得
+        stream = await navigator.mediaDevices.getUserMedia({
           video: { deviceId: backCamera.deviceId }
         });
 
         video.srcObject = stream;
 
-        // 判定ループ開始
         loop();
 
       } catch (e) {
@@ -69,7 +67,6 @@
       if (video.readyState === 4) {
         const prediction = await model.predict(video);
 
-        // 一番確率の高いものを選択
         let best = prediction[0];
         for (let i = 1; i < prediction.length; i++) {
           if (prediction[i].probability > best.probability) {
