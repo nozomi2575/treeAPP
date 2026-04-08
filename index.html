@@ -2,41 +2,44 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>樹皮判別</title>
+  <title>樹皮判別アプリ</title>
 </head>
 <body>
   <h2>樹皮判別アプリ</h2>
-  <button onclick="init()">開始</button>
+  <button id="startBtn">開始</button>
   <br><br>
+
   <video id="webcam" autoplay playsinline width="300"></video>
   <div id="label-container"></div>
 
-  <!-- ★ここから下が重要 -->
+  <!-- ライブラリ（順番重要） -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
 
   <script>
+    // ★ここだけ自分のURLに変更（最後に / 必須）
     const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
     let model, webcam, labelContainer, maxPredictions;
 
-    async function init() {
+    // ボタン押したら実行（タイミング問題回避）
+    document.getElementById("startBtn").addEventListener("click", async () => {
       try {
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
 
+        // モデル読み込み
         model = await tmImage.load(modelURL, metadataURL);
 
-        const flip = false;
-        webcam = new tmImage.Webcam(300, 300, flip);
-
+        // カメラ設定（バックカメラ固定）
+        webcam = new tmImage.Webcam(300, 300, false);
         await webcam.setup({ facingMode: "environment" });
         await webcam.play();
 
-        window.requestAnimationFrame(loop);
-
+        // 映像表示
         document.getElementById("webcam").srcObject = webcam.webcam.srcObject;
 
+        // ラベル準備
         labelContainer = document.getElementById("label-container");
         maxPredictions = model.getTotalClasses();
 
@@ -44,11 +47,14 @@
           labelContainer.appendChild(document.createElement("div"));
         }
 
+        // ループ開始
+        window.requestAnimationFrame(loop);
+
       } catch (e) {
         alert("エラー：" + e);
         console.error(e);
       }
-    }
+    });
 
     async function loop() {
       webcam.update();
@@ -58,10 +64,11 @@
 
     async function predict() {
       const prediction = await model.predict(webcam.canvas);
+
       for (let i = 0; i < maxPredictions; i++) {
         const p = prediction[i];
         labelContainer.childNodes[i].innerHTML =
-          p.className + ": " + p.probability.toFixed(2);
+          p.className + "：" + (p.probability * 100).toFixed(1) + "%";
       }
     }
   </script>
