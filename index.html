@@ -2,85 +2,20 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>樹皮判別</title>
+  <title>テスト</title>
 </head>
 
 <body>
-  <h2>樹皮判別アプリ</h2>
-  <button id="startBtn">開始</button>
-  <br><br>
+  <h2>読み込みテスト</h2>
+  <button onclick="test()">テスト</button>
 
-  <video id="webcam" playsinline width="300"></video>
-  <div id="label-container"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
 
   <script>
-    const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
-    let model, video;
-
-    // ★ここで順番に読み込む（重要）
-    async function loadScripts() {
-      await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest");
-      await loadScript("https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest");
-    }
-
-    function loadScript(src) {
-      return new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = src;
-        script.onload = resolve;
-        script.onerror = reject;
-        document.body.appendChild(script);
-      });
-    }
-
-    document.getElementById("startBtn").addEventListener("click", async () => {
-      try {
-        // ★ライブラリ確実に読み込み
-        await loadScripts();
-
-        if (typeof tmImage === "undefined") {
-          throw new Error("tmImageが読み込まれていません");
-        }
-
-        const modelURL = URL + "model.json";
-        const metadataURL = URL + "metadata.json";
-
-        model = await tmImage.load(modelURL, metadataURL);
-
-        video = document.getElementById("webcam");
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true
-        });
-
-        video.srcObject = stream;
-        await video.play();
-
-        loop();
-
-      } catch (e) {
-        alert("エラー：" + e);
-        console.error(e);
-      }
-    });
-
-    async function loop() {
-      if (video.readyState === 4) {
-        const prediction = await model.predict(video);
-
-        let best = prediction[0];
-        for (let i = 1; i < prediction.length; i++) {
-          if (prediction[i].probability > best.probability) {
-            best = prediction[i];
-          }
-        }
-
-        document.getElementById("label-container").innerHTML =
-          "<h1>" + best.className + "</h1>" +
-          "<h2>" + (best.probability * 100).toFixed(1) + "%</h2>";
-      }
-
-      requestAnimationFrame(loop);
+    function test() {
+      alert("tmImageの型: " + typeof tmImage);
+      console.log("tmImage:", tmImage);
     }
   </script>
 </body>
