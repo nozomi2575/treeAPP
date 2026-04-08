@@ -3,17 +3,29 @@
 <head>
   <meta charset="utf-8">
   <title>樹皮判別</title>
+  <style>
+    body {
+      background: black;
+      color: white;
+      text-align: center;
+      font-family: sans-serif;
+    }
+    #result {
+      margin-top: 20px;
+    }
+  </style>
 </head>
 
 <body>
   <h2>樹皮判別アプリ</h2>
-  <button id="startBtn">開始</button>
+  <button id="startBtn" style="font-size:20px;">開始</button>
   <br><br>
 
   <video id="webcam" playsinline width="300"></video>
-  <div id="label-container"></div>
 
-  <!-- ★固定バージョン（ここが重要） -->
+  <div id="result"></div>
+
+  <!-- ★安定版ライブラリ -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
@@ -21,6 +33,10 @@
     const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
     let model, video;
+
+    // ★スムージング用
+    let history = [];
+    const MAX_HISTORY = 10;
 
     document.getElementById("startBtn").addEventListener("click", init);
 
@@ -33,16 +49,18 @@
 
         video = document.getElementById("webcam");
 
-        // カメラ起動
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" },
           audio: false
         });
 
         video.srcObject = stream;
-        await video.play();
 
-        loop();
+        // ★iPhone対策
+        video.onloadedmetadata = () => {
+          video.play();
+          loop();
+        };
 
       } catch (e) {
         alert("エラー：" + e);
@@ -54,16 +72,32 @@
       if (video.readyState === 4) {
         const prediction = await model.predict(video);
 
-        let best = prediction[0];
-        for (let i = 1; i < prediction.length; i++) {
-          if (prediction[i].probability > best.probability) {
-            best = prediction[i];
-          }
-        }
+        // ★履歴追加
+        history.push(prediction);
+        if (history.length > MAX_HISTORY) history.shift();
 
-        document.getElementById("label-container").innerHTML =
-          "<h1>" + best.className + "</h1>" +
-          "<h2>" + (best.probability * 100).toFixed(1) + "%</h2>";
+        // ★平均化
+        let avg = {};
+        history.forEach(p => {
+          p.forEach(item => {
+            avg[item.className] = (avg[item.className] || 0) + item.probability;
+          });
+        });
+
+        let best = Object.keys(avg).map(k => ({
+          className: k,
+          probability: avg[k] / history.length
+        })).sort((a,b)=>b.probability-a.probability)[0];
+
+        // ★信頼度低いときは表示しない
+        if (best.probability < 0.6) {
+          document.getElementById("result").innerHTML =
+            "<div style='font-size:30px;'>判定中...</div>";
+        } else {
+          document.getElementById("result").innerHTML =
+            "<div style='font-size:40px;font-weight:bold'>" + best.className + "</div>" +
+            "<div style='font-size:24px'>" + (best.probability * 100).toFixed(1) + "%</div>";
+        }
       }
 
       requestAnimationFrame(loop);
