@@ -2,8 +2,9 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>樹皮判別アプリ</title>
+  <title>樹皮判別</title>
 </head>
+
 <body>
   <h2>樹皮判別アプリ</h2>
   <button id="startBtn">開始</button>
@@ -12,64 +13,32 @@
   <video id="webcam" autoplay playsinline width="300"></video>
   <div id="label-container"></div>
 
-  <!-- ★defer付きが重要 -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest" defer></script>
+  <!-- ★必ず閉じる -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
 
   <script>
     const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
-    let model, webcam, labelContainer, maxPredictions;
+    let model, webcam;
 
-    window.addEventListener("load", () => {
-      document.getElementById("startBtn").addEventListener("click", init);
-    });
-
-    async function init() {
+    document.getElementById("startBtn").addEventListener("click", async () => {
       try {
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
 
-        // ★ここでtmImageが確実に使える状態になる
         model = await tmImage.load(modelURL, metadataURL);
 
         webcam = new tmImage.Webcam(300, 300, false);
-
         await webcam.setup({ facingMode: "environment" });
         await webcam.play();
 
         document.getElementById("webcam").srcObject = webcam.webcam.srcObject;
 
-        labelContainer = document.getElementById("label-container");
-        maxPredictions = model.getTotalClasses();
-
-        for (let i = 0; i < maxPredictions; i++) {
-          labelContainer.appendChild(document.createElement("div"));
-        }
-
-        loop();
-
       } catch (e) {
-        alert("エラー：" + e);
-        console.error(e);
+        alert(e);
       }
-    }
-
-    async function loop() {
-      webcam.update();
-      await predict();
-      requestAnimationFrame(loop);
-    }
-
-    async function predict() {
-      const prediction = await model.predict(webcam.canvas);
-
-      for (let i = 0; i < maxPredictions; i++) {
-        const p = prediction[i];
-        labelContainer.childNodes[i].innerHTML =
-          p.className + "：" + (p.probability * 100).toFixed(1) + "%";
-      }
-    }
+    });
   </script>
 </body>
 </html>
