@@ -13,18 +13,35 @@
   <video id="webcam" playsinline width="300"></video>
   <div id="label-container"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
-
   <script>
     const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
-
     let model, video;
 
-    document.getElementById("startBtn").addEventListener("click", init);
+    // ★ここで順番に読み込む（重要）
+    async function loadScripts() {
+      await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest");
+      await loadScript("https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest");
+    }
 
-    async function init() {
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.body.appendChild(script);
+      });
+    }
+
+    document.getElementById("startBtn").addEventListener("click", async () => {
       try {
+        // ★ライブラリ確実に読み込み
+        await loadScripts();
+
+        if (typeof tmImage === "undefined") {
+          throw new Error("tmImageが読み込まれていません");
+        }
+
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
 
@@ -32,31 +49,12 @@
 
         video = document.getElementById("webcam");
 
-        // カメラ取得（まずは確実に取る）
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false
+          video: true
         });
 
         video.srcObject = stream;
-
-        // ★ここが超重要（iPhone対策）
         await video.play();
-
-        // バックカメラに再取得（できれば）
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(d => d.kind === "videoinput");
-
-        if (videoDevices.length > 1) {
-          const backCamera = videoDevices[videoDevices.length - 1];
-
-          const backStream = await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: { exact: backCamera.deviceId } }
-          });
-
-          video.srcObject = backStream;
-          await video.play();
-        }
 
         loop();
 
@@ -64,7 +62,7 @@
         alert("エラー：" + e);
         console.error(e);
       }
-    }
+    });
 
     async function loop() {
       if (video.readyState === 4) {
