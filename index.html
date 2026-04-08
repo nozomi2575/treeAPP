@@ -11,43 +11,44 @@
   <video id="webcam" autoplay playsinline width="300"></video>
   <div id="label-container"></div>
 
+  <!-- ★ここから下が重要 -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
 
   <script>
-    const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
+    const URL = "ここにあなたのURL/";
 
     let model, webcam, labelContainer, maxPredictions;
 
     async function init() {
-  try {
-    const modelURL = URL + "model.json";
-    const metadataURL = URL + "metadata.json";
+      try {
+        const modelURL = URL + "model.json";
+        const metadataURL = URL + "metadata.json";
 
-    model = await tmImage.load(modelURL, metadataURL);
+        model = await tmImage.load(modelURL, metadataURL);
 
-    const flip = false;
-    webcam = new tmImage.Webcam(300, 300, flip);
+        const flip = false;
+        webcam = new tmImage.Webcam(300, 300, flip);
 
-    await webcam.setup({ facingMode: "environment" });
-    await webcam.play();
+        await webcam.setup({ facingMode: "environment" });
+        await webcam.play();
 
-    window.requestAnimationFrame(loop);
+        window.requestAnimationFrame(loop);
 
-    document.getElementById("webcam").srcObject = webcam.webcam.srcObject;
+        document.getElementById("webcam").srcObject = webcam.webcam.srcObject;
 
-    labelContainer = document.getElementById("label-container");
-    maxPredictions = model.getTotalClasses();
+        labelContainer = document.getElementById("label-container");
+        maxPredictions = model.getTotalClasses();
 
-    for (let i = 0; i < maxPredictions; i++) {
-      labelContainer.appendChild(document.createElement("div"));
+        for (let i = 0; i < maxPredictions; i++) {
+          labelContainer.appendChild(document.createElement("div"));
+        }
+
+      } catch (e) {
+        alert("エラー：" + e);
+        console.error(e);
+      }
     }
-
-  } catch (e) {
-    alert("エラー：" + e);
-    console.error(e);
-  }
-}
 
     async function loop() {
       webcam.update();
