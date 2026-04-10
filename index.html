@@ -1,114 +1,174 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>樹皮判別</title>
-  <style>
-    body {
-      background: black;
-      color: white;
-      text-align: center;
-      font-family: sans-serif;
-    }
-    #result {
-      margin-top: 20px;
-    }
-  </style>
+<meta charset="utf-8">
+<title>樹種＋直径測定</title>
+
+<style>
+body {
+  background: black;
+  color: white;
+  text-align: center;
+  font-family: sans-serif;
+}
+
+#videoWrapper {
+  position: relative;
+  display: inline-block;
+}
+
+#webcam {
+  width: 300px;
+}
+
+/* 中央ライン */
+#line {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 100%;
+  background: red;
+}
+
+#result {
+  margin-top: 10px;
+}
+</style>
 </head>
 
 <body>
-  <h2>樹皮判別アプリ</h2>
-  <button id="startBtn" style="font-size:20px;">開始</button>
-  <br><br>
 
-  <video id="webcam" playsinline width="300"></video>
-  <div id="result"></div>
+<h2>樹種＋直径測定</h2>
+<button id="startBtn">開始</button><br><br>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<div id="videoWrapper">
+  <video id="webcam" playsinline></video>
+  <div id="line"></div>
+</div>
 
-  <script>
-    const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
+<div id="result"></div>
 
-    let model, video;
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
-    let history = [];
-    const MAX_HISTORY = 10;
+<script>
+const URL = "ここにモデルURL";
 
-    // ★しきい値（少し緩めでOK：該当なしがあるため）
-    const THRESHOLD = 0.7;
-    const DIFF_THRESHOLD = 0.1;
+let model, video;
 
-    document.getElementById("startBtn").addEventListener("click", init);
+let history = [];
+const MAX_HISTORY = 10;
 
-    async function init() {
-      try {
-        const modelURL = URL + "model.json";
-        const metadataURL = URL + "metadata.json";
+const THRESHOLD = 0.7;
+const DIFF_THRESHOLD = 0.1;
 
-        model = await tmImage.load(modelURL, metadataURL);
+// ★直径変換係数（あとで調整）
+const SCALE = 0.2;
 
-        video = document.getElementById("webcam");
+document.getElementById("startBtn").addEventListener("click", init);
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false
-        });
+async function init() {
+  const modelURL = URL + "model.json";
+  const metadataURL = URL + "metadata.json";
 
-        video.srcObject = stream;
+  model = await tmImage.load(modelURL, metadataURL);
 
-        video.onloadedmetadata = () => {
-          video.play();
-          loop();
-        };
+  video = document.getElementById("webcam");
 
-      } catch (e) {
-        alert("エラー：" + e);
-        console.error(e);
-      }
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "environment" },
+    audio: false
+  });
+
+  video.srcObject = stream;
+
+  video.onloadedmetadata = () => {
+    video.play();
+    loop();
+  };
+}
+
+async function loop() {
+  if (video.readyState === 4) {
+
+    // ===== 樹種判別 =====
+    const prediction = await model.predict(video);
+
+    history.push(prediction);
+    if (history.length > MAX_HISTORY) history.shift();
+
+    let avg = {};
+    history.forEach(p => {
+      p.forEach(item => {
+        avg[item.className] = (avg[item.className] || 0) + item.probability;
+      });
+    });
+
+    let sorted = Object.keys(avg).map(k => ({
+      className: k,
+      probability: avg[k] / history.length
+    })).sort((a,b)=>b.probability-a.probability);
+
+    let best = sorted[0];
+    let second = sorted[1];
+
+    let species = "該当なし";
+
+    if (
+      best.className !== "該当なし" &&
+      best.probability > THRESHOLD &&
+      (best.probability - second.probability) > DIFF_THRESHOLD
+    ) {
+      species = best.className;
     }
 
-    async function loop() {
-      if (video.readyState === 4) {
-        const prediction = await model.predict(video);
+    // ===== 直径測定（簡易） =====
+    const width = detectWidth();
 
-        // 履歴保存
-        history.push(prediction);
-        if (history.length > MAX_HISTORY) history.shift();
+    let diameter = Math.round(width * SCALE);
 
-        // 平均化
-        let avg = {};
-        history.forEach(p => {
-          p.forEach(item => {
-            avg[item.className] = (avg[item.className] || 0) + item.probability;
-          });
-        });
+    document.getElementById("result").innerHTML =
+      "<div style='font-size:30px'>" + species + "</div>" +
+      "<div style='font-size:40px'>" + diameter + " cm</div>";
+  }
 
-        let sorted = Object.keys(avg).map(k => ({
-          className: k,
-          probability: avg[k] / history.length
-        })).sort((a,b)=>b.probability-a.probability);
+  requestAnimationFrame(loop);
+}
 
-        let best = sorted[0];
-        let second = sorted[1];
+// ★幹の幅を検出（簡易）
+function detectWidth() {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
 
-        // ★該当なしロジック（ここが重要）
-        if (
-          best.className === "該当なし" ||
-          best.probability < THRESHOLD ||
-          (best.probability - second.probability) < DIFF_THRESHOLD
-        ) {
-          document.getElementById("result").innerHTML =
-            "<div style='font-size:30px;'>該当なし</div>";
-        } else {
-          document.getElementById("result").innerHTML =
-            "<div style='font-size:40px;font-weight:bold'>" + best.className + "</div>" +
-            "<div style='font-size:24px'>" + (best.probability * 100).toFixed(1) + "%</div>";
-        }
-      }
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
 
-      requestAnimationFrame(loop);
-    }
-  </script>
+  ctx.drawImage(video, 0, 0);
+
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const centerX = Math.floor(canvas.width / 2);
+
+  let left = centerX;
+  let right = centerX;
+
+  // 左へ探索
+  for (let x = centerX; x > 0; x--) {
+    const i = (Math.floor(canvas.height/2) * canvas.width + x) * 4;
+    if (img.data[i] < 100) break;
+    left = x;
+  }
+
+  // 右へ探索
+  for (let x = centerX; x < canvas.width; x++) {
+    const i = (Math.floor(canvas.height/2) * canvas.width + x) * 4;
+    if (img.data[i] < 100) break;
+    right = x;
+  }
+
+  return right - left;
+}
+</script>
+
 </body>
 </html>
