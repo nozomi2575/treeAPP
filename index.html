@@ -28,16 +28,16 @@
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
   <script>
-    const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
+    const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/;  // ★忘れず更新
 
     let model, video;
 
     let history = [];
     const MAX_HISTORY = 10;
 
-    // ★しきい値（ここ調整ポイント）
-    const THRESHOLD = 0.75;
-    const DIFF_THRESHOLD = 0.15;
+    // ★しきい値（少し緩めでOK：該当なしがあるため）
+    const THRESHOLD = 0.7;
+    const DIFF_THRESHOLD = 0.1;
 
     document.getElementById("startBtn").addEventListener("click", init);
 
@@ -92,8 +92,9 @@
         let best = sorted[0];
         let second = sorted[1];
 
-        // ★該当なし判定（ここが核心）
+        // ★該当なしロジック（ここが重要）
         if (
+          best.className === "該当なし" ||
           best.probability < THRESHOLD ||
           (best.probability - second.probability) < DIFF_THRESHOLD
         ) {
