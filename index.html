@@ -22,10 +22,8 @@
   <br><br>
 
   <video id="webcam" playsinline width="300"></video>
-
   <div id="result"></div>
 
-  <!-- ★安定版ライブラリ -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
@@ -34,9 +32,12 @@
 
     let model, video;
 
-    // ★スムージング用
     let history = [];
     const MAX_HISTORY = 10;
+
+    // ★しきい値（ここ調整ポイント）
+    const THRESHOLD = 0.75;
+    const DIFF_THRESHOLD = 0.15;
 
     document.getElementById("startBtn").addEventListener("click", init);
 
@@ -56,7 +57,6 @@
 
         video.srcObject = stream;
 
-        // ★iPhone対策
         video.onloadedmetadata = () => {
           video.play();
           loop();
@@ -72,11 +72,11 @@
       if (video.readyState === 4) {
         const prediction = await model.predict(video);
 
-        // ★履歴追加
+        // 履歴保存
         history.push(prediction);
         if (history.length > MAX_HISTORY) history.shift();
 
-        // ★平均化
+        // 平均化
         let avg = {};
         history.forEach(p => {
           p.forEach(item => {
@@ -84,15 +84,21 @@
           });
         });
 
-        let best = Object.keys(avg).map(k => ({
+        let sorted = Object.keys(avg).map(k => ({
           className: k,
           probability: avg[k] / history.length
-        })).sort((a,b)=>b.probability-a.probability)[0];
+        })).sort((a,b)=>b.probability-a.probability);
 
-        // ★信頼度低いときは表示しない
-        if (best.probability < 0.6) {
+        let best = sorted[0];
+        let second = sorted[1];
+
+        // ★該当なし判定（ここが核心）
+        if (
+          best.probability < THRESHOLD ||
+          (best.probability - second.probability) < DIFF_THRESHOLD
+        ) {
           document.getElementById("result").innerHTML =
-            "<div style='font-size:30px;'>判定中...</div>";
+            "<div style='font-size:30px;'>該当なし</div>";
         } else {
           document.getElementById("result").innerHTML =
             "<div style='font-size:40px;font-weight:bold'>" + best.className + "</div>" +
