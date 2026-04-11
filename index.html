@@ -148,22 +148,43 @@ function detectWidth() {
 
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const centerX = Math.floor(canvas.width / 2);
+  const y = Math.floor(canvas.height / 2);
 
   let left = centerX;
   let right = centerX;
 
-  // 左へ探索
-  for (let x = centerX; x > 0; x--) {
-    const i = (Math.floor(canvas.height/2) * canvas.width + x) * 4;
-    if (img.data[i] < 100) break;
-    left = x;
+  const TH = 20;
+
+  // 左
+  for (let x = centerX; x > 1; x--) {
+    const i1 = (y * canvas.width + x) * 4;
+    const i2 = (y * canvas.width + (x - 1)) * 4;
+
+    const diff =
+      Math.abs(img.data[i1] - img.data[i2]) +
+      Math.abs(img.data[i1+1] - img.data[i2+1]) +
+      Math.abs(img.data[i1+2] - img.data[i2+2]);
+
+    if (diff > TH) {
+      left = x;
+      break;
+    }
   }
 
-  // 右へ探索
-  for (let x = centerX; x < canvas.width; x++) {
-    const i = (Math.floor(canvas.height/2) * canvas.width + x) * 4;
-    if (img.data[i] < 100) break;
-    right = x;
+  // 右
+  for (let x = centerX; x < canvas.width - 1; x++) {
+    const i1 = (y * canvas.width + x) * 4;
+    const i2 = (y * canvas.width + (x + 1)) * 4;
+
+    const diff =
+      Math.abs(img.data[i1] - img.data[i2]) +
+      Math.abs(img.data[i1+1] - img.data[i2+1]) +
+      Math.abs(img.data[i1+2] - img.data[i2+2]);
+
+    if (diff > TH) {
+      right = x;
+      break;
+    }
   }
 
   return right - left;
