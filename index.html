@@ -10,59 +10,97 @@ body {
   color: white;
   text-align: center;
   font-family: sans-serif;
+  margin: 0;
 }
 
+/* ★バージョン（上部） */
 #version {
-  position: fixed;
-  bottom: 5px;
-  right: 10px;
-  font-size: 12px;
+  font-size: 14px;
   color: gray;
+  margin-top: 5px;
 }
 
+/* カメラ */
 #videoWrapper {
   position: relative;
   display: inline-block;
 }
 
 #webcam {
-  width: 300px;
+  width: 90vw;
+  max-width: 400px;
+  border-radius: 10px;
 }
 
+/* 中央ライン（強化） */
 #line {
   position: absolute;
   top: 0;
   left: 50%;
-  width: 2px;
+  width: 4px;
   height: 100%;
   background: red;
+  opacity: 0.8;
 }
 
+/* 測定値表示 */
 #result {
+  font-size: 60px;
+  font-weight: bold;
   margin-top: 10px;
 }
 
+/* 暫定値 */
 #subResult {
+  font-size: 22px;
+  color: lightgray;
+}
+
+/* 状態表示 */
+#status {
   font-size: 20px;
-  color: gray;
+  margin-top: 5px;
+}
+
+/* 背景ボックス */
+.box {
+  background: rgba(0,0,0,0.5);
+  padding: 10px;
+  border-radius: 10px;
+  display: inline-block;
+  margin-top: 10px;
+}
+
+/* 測定中アニメーション */
+@keyframes blink {
+  0% {opacity: 1;}
+  50% {opacity: 0.3;}
+  100% {opacity: 1;}
+}
+
+.measuring {
+  animation: blink 1s infinite;
 }
 </style>
 </head>
 
 <body>
 
-<div id="version">v1.5</div>
+<div id="version">樹種＋直径測定 v2.0</div>
 
 <h2>樹種＋直径測定</h2>
-<button id="startBtn">開始</button><br><br>
+<button id="startBtn" style="font-size:20px;">開始</button><br><br>
 
 <div id="videoWrapper">
   <video id="webcam" playsinline></video>
   <div id="line"></div>
 </div>
 
-<div id="result"></div>
-<div id="subResult"></div>
+<div class="box">
+  <div id="result">-- cm</div>
+  <div id="status">待機中</div>
+  <div id="subResult">暫定値：-- cm</div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
@@ -75,20 +113,18 @@ let model, video;
 let history = [];
 const MAX_HISTORY = 10;
 
-// ===== 直径安定化 =====
 let diameterHistory = [];
 const MAX_DIAMETER_HISTORY = 10;
 let prevDiameter = 0;
 
-// ===== 自動ホールド =====
+// 自動ホールド
 let stableCount = 0;
 let stableDiameter = 0;
 const STABLE_THRESHOLD = 1;
 const STABLE_FRAMES = 5;
 
-// ===== 暫定値保持 =====
+// 暫定値保持
 let lastTempDiameter = "--";
-let lastUpdateTime = 0;
 
 const THRESHOLD = 0.7;
 const DIFF_THRESHOLD = 0.1;
@@ -156,27 +192,19 @@ async function loop() {
     const width = detectWidth();
 
     if (width === 0) {
-      document.getElementById("result").innerHTML =
-        "<div style='font-size:30px'>" + species + "</div>" +
-        "<div style='font-size:50px'>-- cm</div>";
-
-      // ★前の暫定値を保持
-      document.getElementById("subResult").innerHTML =
+      document.getElementById("result").innerHTML = "-- cm";
+      document.getElementById("status").innerText = "対象なし";
+      document.getElementById("subResult").innerText =
         "暫定値：" + lastTempDiameter + " cm";
-
       requestAnimationFrame(loop);
       return;
     }
 
-    // ===== 暫定値 =====
     let diameterRaw = width * SCALE;
     let tempDiameter = Math.round(diameterRaw);
 
-    // ★保存（ここがポイント）
     lastTempDiameter = tempDiameter;
-    lastUpdateTime = Date.now();
 
-    // ===== 平均化 =====
     diameterHistory.push(diameterRaw);
     if (diameterHistory.length > MAX_DIAMETER_HISTORY) {
       diameterHistory.shift();
@@ -206,21 +234,24 @@ async function loop() {
     if (stableCount >= STABLE_FRAMES) {
 
       document.getElementById("result").innerHTML =
-        "<div style='font-size:30px'>" + species + "</div>" +
-        "<div style='font-size:60px;color:yellow'>" + diameter + " cm</div>";
+        "<span style='color:yellow'>" + diameter + " cm</span>";
 
-      document.getElementById("subResult").innerHTML =
-        "✔ 自動確定（暫定：" + lastTempDiameter + " cm）";
+      document.getElementById("status").innerText = "測定完了";
+
+      // ★バイブ
+      if (navigator.vibrate) navigator.vibrate(200);
 
     } else {
 
       document.getElementById("result").innerHTML =
-        "<div style='font-size:30px'>" + species + "</div>" +
-        "<div style='font-size:50px'>" + diameter + " cm</div>";
+        "<span class='measuring'>" + diameter + " cm</span>";
 
-      document.getElementById("subResult").innerHTML =
-        "暫定値：" + lastTempDiameter + " cm";
+      document.getElementById("status").innerText = "測定中...";
+
     }
+
+    document.getElementById("subResult").innerText =
+      "暫定値：" + lastTempDiameter + " cm";
   }
 
   requestAnimationFrame(loop);
