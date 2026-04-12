@@ -71,6 +71,9 @@ let model, video;
 let history = [];
 const MAX_HISTORY = 10;
 
+let diameterHistory = [];
+const MAX_DIAMETER_HISTORY = 10;
+  
 const THRESHOLD = 0.7;
 const DIFF_THRESHOLD = 0.1;
 
@@ -136,9 +139,6 @@ async function loop() {
 
     // ===== 直径測定（簡易） =====
     const width = detectWidth();
-
-let diameterHistory = [];
-const MAX_DIAMETER_HISTORY = 10;
     
     let diameterRaw = width * SCALE;
 
