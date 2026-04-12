@@ -13,11 +13,27 @@ body {
   margin: 0;
 }
 
-/* ★バージョン（上部） */
+/* バージョン */
 #version {
-  font-size: 14px;
+  font-size: 16px;
   color: gray;
   margin-top: 5px;
+}
+
+/* タイトル */
+h2 {
+  font-size: 28px;
+  margin: 5px 0;
+}
+
+/* 開始ボタン（大型化） */
+#startBtn {
+  font-size: 28px;
+  padding: 15px 40px;
+  border-radius: 10px;
+  border: none;
+  background: #2ecc71;
+  color: white;
 }
 
 /* カメラ */
@@ -27,12 +43,12 @@ body {
 }
 
 #webcam {
-  width: 90vw;
-  max-width: 400px;
-  border-radius: 10px;
+  width: 95vw;
+  max-width: 500px;
+  border-radius: 12px;
 }
 
-/* 中央ライン（強化） */
+/* 中央ライン */
 #line {
   position: absolute;
   top: 0;
@@ -43,11 +59,32 @@ body {
   opacity: 0.8;
 }
 
-/* 測定値表示 */
+/* 情報エリア */
+.box {
+  background: rgba(0,0,0,0.6);
+  padding: 15px;
+  border-radius: 12px;
+  margin: 15px auto;
+  width: 90vw;
+  max-width: 500px;
+}
+
+/* 樹種 */
+#species {
+  font-size: 28px;
+  margin-bottom: 5px;
+}
+
+/* 直径 */
 #result {
-  font-size: 60px;
+  font-size: 70px;
   font-weight: bold;
-  margin-top: 10px;
+}
+
+/* 状態 */
+#status {
+  font-size: 24px;
+  margin: 5px 0;
 }
 
 /* 暫定値 */
@@ -56,22 +93,7 @@ body {
   color: lightgray;
 }
 
-/* 状態表示 */
-#status {
-  font-size: 20px;
-  margin-top: 5px;
-}
-
-/* 背景ボックス */
-.box {
-  background: rgba(0,0,0,0.5);
-  padding: 10px;
-  border-radius: 10px;
-  display: inline-block;
-  margin-top: 10px;
-}
-
-/* 測定中アニメーション */
+/* 測定中アニメ */
 @keyframes blink {
   0% {opacity: 1;}
   50% {opacity: 0.3;}
@@ -86,17 +108,20 @@ body {
 
 <body>
 
-<div id="version">樹種＋直径測定 v2.0</div>
+<div id="version">樹種＋直径測定 v2.1</div>
 
 <h2>樹種＋直径測定</h2>
-<button id="startBtn" style="font-size:20px;">開始</button><br><br>
+
+<button id="startBtn">▶ 開始</button><br><br>
 
 <div id="videoWrapper">
   <video id="webcam" playsinline></video>
   <div id="line"></div>
 </div>
 
+<!-- ★カメラの下に集約 -->
 <div class="box">
+  <div id="species">---</div>
   <div id="result">-- cm</div>
   <div id="status">待機中</div>
   <div id="subResult">暫定値：-- cm</div>
@@ -117,13 +142,11 @@ let diameterHistory = [];
 const MAX_DIAMETER_HISTORY = 10;
 let prevDiameter = 0;
 
-// 自動ホールド
 let stableCount = 0;
 let stableDiameter = 0;
 const STABLE_THRESHOLD = 1;
 const STABLE_FRAMES = 5;
 
-// 暫定値保持
 let lastTempDiameter = "--";
 
 const THRESHOLD = 0.7;
@@ -188,11 +211,13 @@ async function loop() {
       species = best.className;
     }
 
-    // ===== 直径測定 =====
+    document.getElementById("species").innerText = species;
+
+    // ===== 直径 =====
     const width = detectWidth();
 
     if (width === 0) {
-      document.getElementById("result").innerHTML = "-- cm";
+      document.getElementById("result").innerText = "-- cm";
       document.getElementById("status").innerText = "対象なし";
       document.getElementById("subResult").innerText =
         "暫定値：" + lastTempDiameter + " cm";
@@ -221,7 +246,7 @@ async function loop() {
     prevDiameter = diameter;
     diameter = Math.round(diameter);
 
-    // ===== 自動ホールド =====
+    // 自動ホールド
     if (Math.abs(diameter - stableDiameter) < STABLE_THRESHOLD) {
       stableCount++;
     } else {
@@ -230,24 +255,15 @@ async function loop() {
 
     stableDiameter = diameter;
 
-    // ===== 表示 =====
     if (stableCount >= STABLE_FRAMES) {
-
       document.getElementById("result").innerHTML =
         "<span style='color:yellow'>" + diameter + " cm</span>";
-
       document.getElementById("status").innerText = "測定完了";
-
-      // ★バイブ
       if (navigator.vibrate) navigator.vibrate(200);
-
     } else {
-
       document.getElementById("result").innerHTML =
         "<span class='measuring'>" + diameter + " cm</span>";
-
       document.getElementById("status").innerText = "測定中...";
-
     }
 
     document.getElementById("subResult").innerText =
