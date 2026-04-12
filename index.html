@@ -69,7 +69,7 @@ h2 {
   max-width: 600px;
 }
 
-/* 樹種（大きく＆色） */
+/* 樹種 */
 #species {
   font-size: 60px;
   font-weight: bold;
@@ -84,6 +84,12 @@ h2 {
 
 /* 状態 */
 #status {
+  font-size: 30px;
+  margin: 10px 0;
+}
+
+/* 距離 */
+#distance {
   font-size: 30px;
   margin: 10px 0;
 }
@@ -109,7 +115,7 @@ h2 {
 
 <body>
 
-<div id="version">樹種＋直径測定 v2.2</div>
+<div id="version">樹種＋直径測定 v2.3</div>
 
 <h2>樹種＋直径測定</h2>
 
@@ -124,6 +130,7 @@ h2 {
   <div id="species">---</div>
   <div id="result">-- cm</div>
   <div id="status">待機中</div>
+  <div id="distance">距離：---</div>
   <div id="subResult">暫定値：-- cm</div>
 </div>
 
@@ -177,6 +184,16 @@ async function init() {
   };
 }
 
+// ===== 距離判定 =====
+function getDistanceLabel(width, videoWidth) {
+  const ratio = width / videoWidth;
+
+  if (ratio > 0.5) return ["近すぎ", "red"];
+  if (ratio > 0.25) return ["適正距離", "lime"];
+  if (ratio > 0.1) return ["やや遠い", "orange"];
+  return ["遠すぎ", "orange"];
+}
+
 async function loop() {
   if (video.readyState === 4) {
 
@@ -215,6 +232,12 @@ async function loop() {
 
     // ===== 直径 =====
     const width = detectWidth();
+
+    // ===== 距離表示 =====
+    const [label, color] = getDistanceLabel(width, video.videoWidth);
+
+    document.getElementById("distance").innerHTML =
+      "<span style='color:" + color + "'>距離：" + label + "</span>";
 
     if (width === 0) {
       document.getElementById("result").innerText = "-- cm";
