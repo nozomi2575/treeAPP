@@ -1,4 +1,4 @@
-const CACHE_NAME = "tree-app-v1";
+const CACHE_NAME = "tree-app-v2";
 
 const urlsToCache = [
   "./",
