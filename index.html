@@ -29,7 +29,6 @@ body {
   width: 300px;
 }
 
-/* 中央ライン */
 #line {
   position: absolute;
   top: 0;
@@ -42,12 +41,17 @@ body {
 #result {
   margin-top: 10px;
 }
+
+#subResult {
+  font-size: 20px;
+  color: gray;
+}
 </style>
 </head>
 
 <body>
 
-<div id="version">v1.2</div>
+<div id="version">v1.3</div>
 
 <h2>樹種＋直径測定</h2>
 <button id="startBtn">開始</button><br><br>
@@ -58,6 +62,7 @@ body {
 </div>
 
 <div id="result"></div>
+<div id="subResult"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
@@ -78,7 +83,6 @@ let prevDiameter = 0;
 const THRESHOLD = 0.7;
 const DIFF_THRESHOLD = 0.1;
 
-// ★直径変換係数（現場で調整）
 const SCALE = 0.2;
 
 document.getElementById("startBtn").addEventListener("click", init);
@@ -141,18 +145,24 @@ async function loop() {
     // ===== 直径測定 =====
     const width = detectWidth();
 
-    // ★幹が検出できない場合
+    // 幹なし
     if (width === 0) {
       document.getElementById("result").innerHTML =
         "<div style='font-size:30px'>" + species + "</div>" +
-        "<div style='font-size:40px'>-- cm</div>";
+        "<div style='font-size:50px'>-- cm</div>";
+
+      document.getElementById("subResult").innerHTML =
+        "暫定値：-- cm";
+
       requestAnimationFrame(loop);
       return;
     }
 
+    // ★暫定値
     let diameterRaw = width * SCALE;
+    let tempDiameter = Math.round(diameterRaw);
 
-    // ★履歴平均（安定化）
+    // ★履歴平均（確定値）
     diameterHistory.push(diameterRaw);
     if (diameterHistory.length > MAX_DIAMETER_HISTORY) {
       diameterHistory.shift();
@@ -162,24 +172,27 @@ async function loop() {
     diameterHistory.forEach(d => sum += d);
     let diameter = sum / diameterHistory.length;
 
-    // ★微小変動を抑える
+    // ★微小変動抑制
     if (Math.abs(diameter - prevDiameter) < 1) {
       diameter = prevDiameter;
     }
 
     prevDiameter = diameter;
-
     diameter = Math.round(diameter);
 
+    // ===== 表示 =====
     document.getElementById("result").innerHTML =
       "<div style='font-size:30px'>" + species + "</div>" +
-      "<div style='font-size:40px'>" + diameter + " cm</div>";
+      "<div style='font-size:50px'>" + diameter + " cm</div>";
+
+    document.getElementById("subResult").innerHTML =
+      "暫定値：" + tempDiameter + " cm";
   }
 
   requestAnimationFrame(loop);
 }
 
-// ===== 幹検出ロジック（安定版） =====
+// ===== 幹検出 =====
 function detectWidth() {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -197,7 +210,6 @@ function detectWidth() {
 
   let widths = [];
 
-  // ★複数ラインで測定
   for (let y = Math.floor(height*0.3); y < Math.floor(height*0.7); y += 20) {
 
     let left = center;
@@ -220,17 +232,13 @@ function detectWidth() {
     widths.push(right - left);
   }
 
-  // ★中央値
   widths.sort((a,b)=>a-b);
-  const median = widths[Math.floor(widths.length/2)];
 
+  const median = widths[Math.floor(widths.length/2)];
   const min = widths[0];
   const max = widths[widths.length-1];
 
-  // ★ばらつきチェック（緩め）
   if (max - min > 80) return 0;
-
-  // ★異常に大きい場合
   if (median > width * 0.8) return 0;
 
   return median;
