@@ -51,7 +51,7 @@ body {
 
 <body>
 
-<div id="version">v1.4</div>
+<div id="version">v1.5</div>
 
 <h2>樹種＋直径測定</h2>
 <button id="startBtn">開始</button><br><br>
@@ -83,8 +83,12 @@ let prevDiameter = 0;
 // ===== 自動ホールド =====
 let stableCount = 0;
 let stableDiameter = 0;
-const STABLE_THRESHOLD = 1;   // cm以内なら安定
-const STABLE_FRAMES = 5;      // 何フレームで確定
+const STABLE_THRESHOLD = 1;
+const STABLE_FRAMES = 5;
+
+// ===== 暫定値保持 =====
+let lastTempDiameter = "--";
+let lastUpdateTime = 0;
 
 const THRESHOLD = 0.7;
 const DIFF_THRESHOLD = 0.1;
@@ -156,18 +160,23 @@ async function loop() {
         "<div style='font-size:30px'>" + species + "</div>" +
         "<div style='font-size:50px'>-- cm</div>";
 
+      // ★前の暫定値を保持
       document.getElementById("subResult").innerHTML =
-        "暫定値：-- cm";
+        "暫定値：" + lastTempDiameter + " cm";
 
       requestAnimationFrame(loop);
       return;
     }
 
-    // 暫定値
+    // ===== 暫定値 =====
     let diameterRaw = width * SCALE;
     let tempDiameter = Math.round(diameterRaw);
 
-    // 平均化
+    // ★保存（ここがポイント）
+    lastTempDiameter = tempDiameter;
+    lastUpdateTime = Date.now();
+
+    // ===== 平均化 =====
     diameterHistory.push(diameterRaw);
     if (diameterHistory.length > MAX_DIAMETER_HISTORY) {
       diameterHistory.shift();
@@ -177,7 +186,6 @@ async function loop() {
     diameterHistory.forEach(d => sum += d);
     let diameter = sum / diameterHistory.length;
 
-    // 微小変動抑制
     if (Math.abs(diameter - prevDiameter) < 1) {
       diameter = prevDiameter;
     }
@@ -185,7 +193,7 @@ async function loop() {
     prevDiameter = diameter;
     diameter = Math.round(diameter);
 
-    // ===== 自動ホールド判定 =====
+    // ===== 自動ホールド =====
     if (Math.abs(diameter - stableDiameter) < STABLE_THRESHOLD) {
       stableCount++;
     } else {
@@ -196,22 +204,22 @@ async function loop() {
 
     // ===== 表示 =====
     if (stableCount >= STABLE_FRAMES) {
-      // ★確定表示
+
       document.getElementById("result").innerHTML =
         "<div style='font-size:30px'>" + species + "</div>" +
         "<div style='font-size:60px;color:yellow'>" + diameter + " cm</div>";
 
       document.getElementById("subResult").innerHTML =
-        "✔ 自動確定";
+        "✔ 自動確定（暫定：" + lastTempDiameter + " cm）";
 
     } else {
-      // ★通常表示
+
       document.getElementById("result").innerHTML =
         "<div style='font-size:30px'>" + species + "</div>" +
         "<div style='font-size:50px'>" + diameter + " cm</div>";
 
       document.getElementById("subResult").innerHTML =
-        "暫定値：" + tempDiameter + " cm";
+        "暫定値：" + lastTempDiameter + " cm";
     }
   }
 
