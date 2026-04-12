@@ -147,47 +147,35 @@ function detectWidth() {
   ctx.drawImage(video, 0, 0);
 
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const centerX = Math.floor(canvas.width / 2);
   const y = Math.floor(canvas.height / 2);
 
-  let left = centerX;
-  let right = centerX;
+  let bestWidth = 0;
 
-  const TH = 20;
+  // ★複数候補から最大幅を探す
+  for (let start = 50; start < canvas.width - 50; start += 10) {
+    let width = 0;
 
-  // 左
-  for (let x = centerX; x > 1; x--) {
-    const i1 = (y * canvas.width + x) * 4;
-    const i2 = (y * canvas.width + (x - 1)) * 4;
+    for (let x = start; x < canvas.width; x++) {
+      const i = (y * canvas.width + x) * 4;
 
-    const diff =
-      Math.abs(img.data[i1] - img.data[i2]) +
-      Math.abs(img.data[i1+1] - img.data[i2+1]) +
-      Math.abs(img.data[i1+2] - img.data[i2+2]);
+      // 明るさ（グレースケール）
+      const gray =
+        (img.data[i] + img.data[i+1] + img.data[i+2]) / 3;
 
-    if (diff > TH) {
-      left = x;
-      break;
+      // 一定以上なら継続（幹っぽい領域）
+      if (gray > 60 && gray < 200) {
+        width++;
+      } else {
+        break;
+      }
+    }
+
+    if (width > bestWidth) {
+      bestWidth = width;
     }
   }
 
-  // 右
-  for (let x = centerX; x < canvas.width - 1; x++) {
-    const i1 = (y * canvas.width + x) * 4;
-    const i2 = (y * canvas.width + (x + 1)) * 4;
-
-    const diff =
-      Math.abs(img.data[i1] - img.data[i2]) +
-      Math.abs(img.data[i1+1] - img.data[i2+1]) +
-      Math.abs(img.data[i1+2] - img.data[i2+2]);
-
-    if (diff > TH) {
-      right = x;
-      break;
-    }
-  }
-
-  return right - left;
+  return bestWidth;
 }
 </script>
 
