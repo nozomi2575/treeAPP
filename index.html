@@ -137,7 +137,21 @@ async function loop() {
     // ===== 直径測定（簡易） =====
     const width = detectWidth();
 
-    let diameter = Math.round(width * SCALE);
+let diameterHistory = [];
+const MAX_DIAMETER_HISTORY = 10;
+    
+    let diameterRaw = width * SCALE;
+
+// 履歴追加
+diameterHistory.push(diameterRaw);
+if (diameterHistory.length > MAX_DIAMETER_HISTORY) {
+  diameterHistory.shift();
+}
+
+// 平均
+let sum = 0;
+diameterHistory.forEach(d => sum += d);
+let diameter = Math.round(sum / diameterHistory.length);
 
     document.getElementById("result").innerHTML =
       "<div style='font-size:30px'>" + species + "</div>" +
