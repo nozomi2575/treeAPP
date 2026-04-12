@@ -48,7 +48,7 @@ body {
 
 <body>
 
-<div id="version">v1.3</div>  
+<div id="version">v1.4</div>  
   
 <h2>樹種＋直径測定</h2>
 <button id="startBtn">開始</button><br><br>
@@ -180,11 +180,14 @@ function detectWidth() {
     columnScore.push(score);
   }
 
-  // ★最大スコアを取得（ここが重要）
   const maxScore = Math.max(...columnScore);
 
-  // ★しきい値（割合で決める）
-  const TH = maxScore * 0.6;
+  // ★ここが超重要（幹が無い場合を除外）
+  if (maxScore < height * 0.2) {
+    return 0;
+  }
+
+  const TH = maxScore * 0.7;
 
   const center = Math.floor(width / 2);
 
@@ -203,7 +206,14 @@ function detectWidth() {
     right = x;
   }
 
-  return right - left;
+  const result = right - left;
+
+  // ★幅が大きすぎる場合も除外
+  if (result > width * 0.8) {
+    return 0;
+  }
+
+  return result;
 }
 </script>
 
