@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v6.1</title>
+<title>樹種＋直径測定 v6.2</title>
 
 <style>
 body {
@@ -59,16 +59,20 @@ button {
   border: 3px solid yellow;
 }
 
-/* 手ガイド */
+/* 手ガイド（横長） */
 #handGuide {
   position: absolute;
-  top: 35%;
-  left: 30%;
-  width: 40%;
-  height: 25%;
-  border: 3px dashed cyan;
+  top: 40%;
+  left: 20%;
+  width: 60%;
+  height: 15%;
+  border: 4px dashed cyan;
   display: none;
 }
+
+/* 状態色 */
+.ok { border-color: lime !important; }
+.ng { border-color: red !important; }
 
 .box {
   background: rgba(0,0,0,0.7);
@@ -83,12 +87,19 @@ button {
 #status { font-size: 32px; }
 #scaleInfo { font-size: 22px; color: yellow; }
 
+#instruction {
+  font-size: 22px;
+  margin: 10px;
+  color: orange;
+}
 </style>
 </head>
 
 <body>
 
-<div id="version">v6.1 片手対応版</div>
+<div id="version">v6.2 UX完成版</div>
+
+<div id="instruction">② 手のひらを横向きにして枠に入れてください</div>
 
 <button id="startBtn">① ▶開始</button>
 <button id="handBtn">② ✋手を登録</button>
@@ -117,8 +128,9 @@ const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 let model, video;
 let scale = null;
 let diameterHistory = [];
+
 let handMode = false;
-let handStableCount = 0;
+let stableCount = 0;
 
 const HAND_WIDTH_CM = 8;
 
@@ -144,9 +156,9 @@ async function init() {
 
 function enterHandMode() {
   handMode = true;
-  handStableCount = 0;
+  stableCount = 0;
   document.getElementById("handGuide").style.display = "block";
-  document.getElementById("status").innerText = "手を枠に入れてください";
+  document.getElementById("status").innerText = "手を横にしてください";
 }
 
 function getMedian(arr) {
@@ -157,26 +169,46 @@ function getMedian(arr) {
 async function loop() {
   if (video.readyState === 4) {
 
-    const width = detectWidth();
+    const { width, height } = detectWidthWithHeight();
 
     // ===== 手登録モード =====
     if (handMode) {
 
-      if (width > 50) {
-        handStableCount++;
-      } else {
-        handStableCount = 0;
+      let guide = document.getElementById("handGuide");
+
+      // 縦判定
+      if (height > width) {
+        guide.classList.remove("ok");
+        guide.classList.add("ng");
+        document.getElementById("status").innerText = "手を横にしてください";
+        stableCount = 0;
       }
+      // 小さい
+      else if (width < 50) {
+        guide.classList.remove("ok");
+        guide.classList.add("ng");
+        document.getElementById("status").innerText = "手を近づけてください";
+        stableCount = 0;
+      }
+      // OK
+      else {
+        guide.classList.remove("ng");
+        guide.classList.add("ok");
+        document.getElementById("status").innerText = "OK";
 
-      if (handStableCount > 10) {
-        scale = HAND_WIDTH_CM / width;
-        handMode = false;
+        stableCount++;
 
-        document.getElementById("handGuide").style.display = "none";
-        document.getElementById("scaleInfo").innerText =
-          "手スケール設定済（" + HAND_WIDTH_CM + "cm）";
+        if (stableCount > 10) {
+          scale = HAND_WIDTH_CM / width;
+          handMode = false;
 
-        document.getElementById("status").innerText = "登録完了";
+          guide.style.display = "none";
+
+          document.getElementById("scaleInfo").innerText =
+            "手スケール設定済（" + HAND_WIDTH_CM + "cm）";
+
+          document.getElementById("status").innerText = "登録完了";
+        }
       }
 
       requestAnimationFrame(loop);
@@ -210,9 +242,9 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
-// 検出ロジック
-function detectWidth() {
-  if (!video.videoWidth) return 0;
+// 幅＋高さ取得
+function detectWidthWithHeight() {
+  if (!video.videoWidth) return { width:0, height:0 };
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -227,44 +259,37 @@ function detectWidth() {
   const w = canvas.width;
   const h = canvas.height;
 
-  const centerX = Math.floor(w / 2);
-  const centerY = Math.floor(h / 2);
+  const cx = Math.floor(w / 2);
+  const cy = Math.floor(h / 2);
 
-  const scanHalfWidth = Math.floor(w * 0.15);
-  const scanHeight = Math.floor(h * 0.2);
+  let left = cx, right = cx, top = cy, bottom = cy;
 
-  let left = centerX;
-  let right = centerX;
-
-  for (let x = centerX; x > centerX - scanHalfWidth; x--) {
-    let diff = 0;
-    for (let dy = -scanHeight/2; dy < scanHeight/2; dy += 2) {
-      const y = centerY + dy;
-      const i = (y * w + x) * 4;
-      const i2 = (y * w + (x-3)) * 4;
-      diff += Math.abs(img.data[i] - img.data[i2]);
-    }
-    if (diff > 80) break;
+  // 横
+  for (let x = cx; x > cx - 200; x--) {
+    if (Math.abs(img.data[(cy*w+x)*4] - img.data[(cy*w+x-3)*4]) > 80) break;
     left = x;
   }
 
-  for (let x = centerX; x < centerX + scanHalfWidth; x++) {
-    let diff = 0;
-    for (let dy = -scanHeight/2; dy < scanHeight/2; dy += 2) {
-      const y = centerY + dy;
-      const i = (y * w + x) * 4;
-      const i2 = (y * w + (x+3)) * 4;
-      diff += Math.abs(img.data[i] - img.data[i2]);
-    }
-    if (diff > 80) break;
+  for (let x = cx; x < cx + 200; x++) {
+    if (Math.abs(img.data[(cy*w+x)*4] - img.data[(cy*w+x+3)*4]) > 80) break;
     right = x;
   }
 
-  const width = right - left;
+  // 縦
+  for (let y = cy; y > cy - 200; y--) {
+    if (Math.abs(img.data[(y*w+cx)*4] - img.data[((y-3)*w+cx)*4]) > 80) break;
+    top = y;
+  }
 
-  if (width < 50 || width > w * 0.6) return 0;
+  for (let y = cy; y < cy + 200; y++) {
+    if (Math.abs(img.data[(y*w+cx)*4] - img.data[((y+3)*w+cx)*4]) > 80) break;
+    bottom = y;
+  }
 
-  return width;
+  return {
+    width: right - left,
+    height: bottom - top
+  };
 }
 </script>
 
