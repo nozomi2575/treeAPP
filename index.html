@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v5.2</title>
+<title>樹種＋直径測定 v5.3</title>
 
 <style>
 body {
@@ -13,17 +13,8 @@ body {
   margin: 0;
 }
 
-#version {
-  font-size: 16px;
-  color: gray;
-  margin: 5px;
-}
-
-#guide {
-  font-size: 20px;
-  color: #ccc;
-  margin: 10px;
-}
+#version { font-size: 16px; color: gray; margin: 5px; }
+#guide { font-size: 20px; color: #ccc; margin: 10px; }
 
 button {
   width: 90%;
@@ -60,7 +51,18 @@ button {
   transform: translateX(-50%);
 }
 
-/* コの字 */
+/* ガイド枠（可視化） */
+#guideBox {
+  position: absolute;
+  top: 40%;
+  left: 35%;
+  width: 30%;
+  height: 20%;
+  border: 2px dashed yellow;
+  pointer-events: none;
+}
+
+/* スケール枠 */
 #scaleBox {
   position: absolute;
   top: 25%;
@@ -85,15 +87,13 @@ button {
 #status { font-size: 28px; }
 #scaleInfo { font-size: 22px; color: yellow; }
 
-#freezeCanvas {
-  display: none;
-}
+#freezeCanvas { display: none; }
 </style>
 </head>
 
 <body>
 
-<div id="version">v5.2 安定版</div>
+<div id="version">v5.3 精度強化版</div>
 
 <div id="guide">
 ①開始 → ②スケール → ③記録 → 測定
@@ -107,6 +107,7 @@ button {
   <video id="webcam" playsinline></video>
   <canvas id="freezeCanvas"></canvas>
   <div id="line"></div>
+  <div id="guideBox"></div>
   <div id="scaleBox"></div>
 </div>
 
@@ -125,13 +126,10 @@ button {
 const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
 let model, video;
-
 let mode = "measure";
 let scale = null;
-
 let frozen = false;
 let frozenImage = null;
-
 let diameterHistory = [];
 
 document.getElementById("startBtn").onclick = init;
@@ -173,7 +171,6 @@ function recordScale() {
 
   ctx.drawImage(video, 0, 0);
 
-  // フリーズ表示
   canvas.style.display = "block";
   video.style.display = "none";
 
@@ -198,20 +195,15 @@ function recordScale() {
   document.getElementById("scaleBox").style.display = "none";
   mode = "measure";
 
-  // ★完全復帰処理（最重要）
   setTimeout(() => {
-
     canvas.style.display = "none";
     video.style.display = "block";
 
-    // Safari対策
     video.srcObject.getTracks().forEach(t => t.enabled = false);
     video.srcObject.getTracks().forEach(t => t.enabled = true);
 
     video.play();
-
     frozen = false;
-
   }, 300);
 }
 
@@ -253,6 +245,7 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
+// ===== ガイド内検出 =====
 function detectWidth() {
   if (!video.videoWidth) return 0;
 
@@ -272,40 +265,67 @@ function detectWidth() {
 
   const w = canvas.width;
   const h = canvas.height;
-  const center = Math.floor(w/2);
 
-  let left = center;
-  let right = center;
+  const centerX = Math.floor(w / 2);
+  const centerY = Math.floor(h / 2);
 
-  for (let x = center; x > 5; x--) {
-    const i = (Math.floor(h/2)*w + x)*4;
-    const i2 = (Math.floor(h/2)*w + (x-5))*4;
+  const scanHalfWidth = Math.floor(w * 0.15);
+  const scanHeight = Math.floor(h * 0.2);
 
-    const diff =
-      Math.abs(img.data[i]-img.data[i2]) +
-      Math.abs(img.data[i+1]-img.data[i2+1]) +
-      Math.abs(img.data[i+2]-img.data[i2+2]);
+  let left = centerX;
+  let right = centerX;
 
-    if (diff > 60) break;
+  for (let x = centerX; x > centerX - scanHalfWidth; x--) {
+
+    let diffSum = 0;
+
+    for (let dy = -scanHeight/2; dy < scanHeight/2; dy += 2) {
+      const y = centerY + dy;
+
+      const i = (y * w + x) * 4;
+      const i2 = (y * w + (x-3)) * 4;
+
+      const diff =
+        Math.abs(img.data[i] - img.data[i2]) +
+        Math.abs(img.data[i+1] - img.data[i2+1]) +
+        Math.abs(img.data[i+2] - img.data[i2+2]);
+
+      diffSum += diff;
+    }
+
+    const avgDiff = diffSum / (scanHeight / 2);
+
+    if (avgDiff > 80) break;
     left = x;
   }
 
-  for (let x = center; x < w-5; x++) {
-    const i = (Math.floor(h/2)*w + x)*4;
-    const i2 = (Math.floor(h/2)*w + (x+5))*4;
+  for (let x = centerX; x < centerX + scanHalfWidth; x++) {
 
-    const diff =
-      Math.abs(img.data[i]-img.data[i2]) +
-      Math.abs(img.data[i+1]-img.data[i2+1]) +
-      Math.abs(img.data[i+2]-img.data[i2+2]);
+    let diffSum = 0;
 
-    if (diff > 60) break;
+    for (let dy = -scanHeight/2; dy < scanHeight/2; dy += 2) {
+      const y = centerY + dy;
+
+      const i = (y * w + x) * 4;
+      const i2 = (y * w + (x+3)) * 4;
+
+      const diff =
+        Math.abs(img.data[i] - img.data[i2]) +
+        Math.abs(img.data[i+1] - img.data[i2+1]) +
+        Math.abs(img.data[i+2] - img.data[i2+2]);
+
+      diffSum += diff;
+    }
+
+    const avgDiff = diffSum / (scanHeight / 2);
+
+    if (avgDiff > 80) break;
     right = x;
   }
 
   const width = right - left;
 
-  if (width < 20 || width > w*0.9) return 0;
+  if (width < 20 || width > w * 0.6) return 0;
 
   return width;
 }
