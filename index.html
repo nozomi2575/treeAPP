@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定（手スケール）</title>
+<title>樹種＋直径測定（スケール方式）</title>
 
 <style>
 body {
@@ -14,66 +14,83 @@ body {
 }
 
 #version {
-  font-size: 18px;
+  font-size: 16px;
   color: gray;
-  margin-top: 8px;
+  margin-top: 5px;
 }
 
+h2 { font-size: 28px; }
+
 button {
-  font-size: 24px;
-  padding: 12px 25px;
+  font-size: 22px;
+  padding: 10px 20px;
   margin: 5px;
   border-radius: 10px;
   border: none;
 }
 
 #startBtn { background: #2ecc71; }
-#setHandBtn { background: orange; }
+#scaleBtn { background: orange; }
+#recordBtn { background: red; }
+
+#videoWrapper {
+  position: relative;
+}
 
 #webcam {
   width: 95vw;
   max-width: 600px;
 }
 
+/* コの字ガイド */
+#scaleBox {
+  position: absolute;
+  top: 25%;
+  left: 20%;
+  width: 60%;
+  height: 20%;
+  border: 4px solid red;
+  border-bottom: none;
+  display: none;
+}
+
 .box {
   background: rgba(0,0,0,0.7);
-  padding: 15px;
+  padding: 12px;
   margin: 10px;
   border-radius: 10px;
 }
 
-#species { font-size: 50px; color: cyan; }
-#result { font-size: 70px; }
-#sub { font-size: 28px; color: gray; }
-#status { font-size: 28px; }
+#species { font-size: 45px; color: cyan; }
+#result { font-size: 65px; }
+#sub { font-size: 26px; color: gray; }
+#status { font-size: 24px; }
+#scaleInfo { font-size: 20px; color: yellow; }
 
-#warning {
-  font-size: 26px;
-  color: red;
-  margin-top: 5px;
-}
 </style>
 </head>
 
 <body>
 
-<div id="version">v3.1 手スケール＋距離警告</div>
+<div id="version">v4.0 コの字スケール</div>
 
 <h2>樹種＋直径測定</h2>
 
 <button id="startBtn">▶開始</button>
-<button id="setHandBtn">✋手を登録（再登録）</button>
+<button id="scaleBtn">📏スケール設定</button>
+<button id="recordBtn">✔記録</button>
 
-<br><br>
-
-<video id="webcam" playsinline></video>
+<div id="videoWrapper">
+  <video id="webcam" playsinline></video>
+  <div id="scaleBox"></div>
+</div>
 
 <div class="box">
   <div id="species">---</div>
   <div id="result">-- cm</div>
   <div id="status">待機中</div>
   <div id="sub">暫定：-- cm</div>
-  <div id="warning"></div>
+  <div id="scaleInfo">スケール未設定</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
@@ -81,17 +98,18 @@ button {
 
 <script>
 const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
-const HAND_REAL_CM = 18;
 
 let model, video;
 
-let handScale = null;
-let handWidthRef = null;
+let mode = "measure"; // measure / scale
+let scale = null;
+let scaleWidthPx = null;
 
 let diameterHistory = [];
 
 document.getElementById("startBtn").onclick = init;
-document.getElementById("setHandBtn").onclick = registerHand;
+document.getElementById("scaleBtn").onclick = enterScaleMode;
+document.getElementById("recordBtn").onclick = recordScale;
 
 async function init() {
   model = await tmImage.load(URL+"model.json", URL+"metadata.json");
@@ -110,23 +128,43 @@ async function init() {
   };
 }
 
-// ===== 手登録 =====
-function registerHand() {
+// ===== スケールモード =====
+function enterScaleMode() {
+  mode = "scale";
+  document.getElementById("scaleBox").style.display = "block";
+  document.getElementById("status").innerText = "スケール設定中";
+}
+
+// ===== 記録 =====
+function recordScale() {
+  if (mode !== "scale") return;
+
   const width = detectWidth();
 
-  if (width > 0) {
-    handScale = HAND_REAL_CM / width;
-    handWidthRef = width;
-    alert("手を登録しました");
-  } else {
-    alert("手が検出できません");
+  if (width === 0) {
+    alert("スケールが検出できません");
+    return;
   }
+
+  const real = prompt("この幅は何cmですか？");
+
+  if (!real) return;
+
+  scale = real / width;
+  scaleWidthPx = width;
+
+  document.getElementById("scaleInfo").innerText =
+    "スケール設定済：" + real + "cm";
+
+  document.getElementById("scaleBox").style.display = "none";
+  mode = "measure";
 }
 
 // ===== メイン =====
 async function loop() {
   if (video.readyState === 4) {
 
+    // 樹種
     const prediction = await model.predict(video);
     let best = prediction.sort((a,b)=>b.probability-a.probability)[0];
 
@@ -135,25 +173,19 @@ async function loop() {
 
     const width = detectWidth();
 
-    // ===== 距離ズレ検知 =====
-    let warning = "";
-    if (handWidthRef && width > 0) {
-      let ratio = width / handWidthRef;
-
-      if (ratio < 0.7 || ratio > 1.3) {
-        warning = "⚠ 距離が変わっています（手を再登録してください）";
-      }
+    if (mode === "scale") {
+      document.getElementById("status").innerText = "スケール合わせ中";
+      requestAnimationFrame(loop);
+      return;
     }
 
-    document.getElementById("warning").innerText = warning;
-
-    if (width === 0 || !handScale) {
+    if (!scale || width === 0) {
       document.getElementById("status").innerText = "測定不可";
       requestAnimationFrame(loop);
       return;
     }
 
-    let diameter = Math.round(width * handScale);
+    let diameter = Math.round(width * scale);
 
     diameterHistory.push(diameter);
     if (diameterHistory.length > 5) diameterHistory.shift();
