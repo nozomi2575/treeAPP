@@ -19,13 +19,9 @@ body {
   margin-top: 8px;
 }
 
-h2 {
-  font-size: 32px;
-}
-
 button {
-  font-size: 26px;
-  padding: 12px 30px;
+  font-size: 24px;
+  padding: 12px 25px;
   margin: 5px;
   border-radius: 10px;
   border: none;
@@ -34,21 +30,9 @@ button {
 #startBtn { background: #2ecc71; }
 #setHandBtn { background: orange; }
 
-#videoWrapper {
-  position: relative;
-}
-
 #webcam {
   width: 95vw;
   max-width: 600px;
-}
-
-#line {
-  position: absolute;
-  left: 50%;
-  width: 4px;
-  height: 100%;
-  background: red;
 }
 
 .box {
@@ -60,30 +44,36 @@ button {
 
 #species { font-size: 50px; color: cyan; }
 #result { font-size: 70px; }
-#sub { font-size: 30px; color: gray; }
+#sub { font-size: 28px; color: gray; }
 #status { font-size: 28px; }
+
+#warning {
+  font-size: 26px;
+  color: red;
+  margin-top: 5px;
+}
 </style>
 </head>
 
 <body>
 
-<div id="version">v3.0 手スケール</div>
+<div id="version">v3.1 手スケール＋距離警告</div>
 
 <h2>樹種＋直径測定</h2>
 
 <button id="startBtn">▶開始</button>
-<button id="setHandBtn">✋手を登録</button>
+<button id="setHandBtn">✋手を登録（再登録）</button>
 
-<div id="videoWrapper">
-  <video id="webcam" playsinline></video>
-  <div id="line"></div>
-</div>
+<br><br>
+
+<video id="webcam" playsinline></video>
 
 <div class="box">
   <div id="species">---</div>
   <div id="result">-- cm</div>
   <div id="status">待機中</div>
   <div id="sub">暫定：-- cm</div>
+  <div id="warning"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
@@ -91,15 +81,13 @@ button {
 
 <script>
 const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
-
-// ★ここだけ自分の手に合わせる
 const HAND_REAL_CM = 18;
 
 let model, video;
 
 let handScale = null;
+let handWidthRef = null;
 
-let history = [];
 let diameterHistory = [];
 
 document.getElementById("startBtn").onclick = init;
@@ -128,26 +116,36 @@ function registerHand() {
 
   if (width > 0) {
     handScale = HAND_REAL_CM / width;
+    handWidthRef = width;
     alert("手を登録しました");
   } else {
-    alert("手がうまく検出できません");
+    alert("手が検出できません");
   }
 }
 
-// ===== メインループ =====
+// ===== メイン =====
 async function loop() {
   if (video.readyState === 4) {
 
-    // ===== 樹種 =====
     const prediction = await model.predict(video);
-
     let best = prediction.sort((a,b)=>b.probability-a.probability)[0];
 
     document.getElementById("species").innerText =
       best.probability > 0.7 ? best.className : "該当なし";
 
-    // ===== 幅 =====
     const width = detectWidth();
+
+    // ===== 距離ズレ検知 =====
+    let warning = "";
+    if (handWidthRef && width > 0) {
+      let ratio = width / handWidthRef;
+
+      if (ratio < 0.7 || ratio > 1.3) {
+        warning = "⚠ 距離が変わっています（手を再登録してください）";
+      }
+    }
+
+    document.getElementById("warning").innerText = warning;
 
     if (width === 0 || !handScale) {
       document.getElementById("status").innerText = "測定不可";
@@ -166,13 +164,12 @@ async function loop() {
     document.getElementById("result").innerText = avg + " cm";
     document.getElementById("sub").innerText = "暫定：" + diameter + " cm";
     document.getElementById("status").innerText = "測定中";
-
   }
 
   requestAnimationFrame(loop);
 }
 
-// ===== 幅検出（エッジ） =====
+// ===== 幅検出 =====
 function detectWidth() {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
