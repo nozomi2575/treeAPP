@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v6.3</title>
+<title>樹種＋直径測定 v6.4</title>
 
 <style>
 body {
@@ -70,7 +70,6 @@ button {
   display: none;
 }
 
-/* 状態色 */
 .ok { border-color: lime !important; }
 .ng { border-color: red !important; }
 
@@ -97,7 +96,7 @@ button {
 
 <body>
 
-<div id="version">v6.3 手登録安定版</div>
+<div id="version">v6.4 手登録安定版</div>
 
 <div id="instruction">② 手のひらを横向きにして枠に入れてください</div>
 
@@ -176,8 +175,8 @@ async function loop() {
 
       let guide = document.getElementById("handGuide");
 
-      // 未検出（ここが今回の肝）
-      if (width === 0) {
+      // 未検出
+      if (width === 0 || height === 0) {
         guide.classList.remove("ok","ng");
         document.getElementById("status").innerText = "手を枠に入れてください";
         stableCount = 0;
@@ -185,39 +184,42 @@ async function loop() {
         return;
       }
 
+      // 小さすぎ（ノイズ排除）
+      if (width < 80) {
+        guide.classList.remove("ok","ng");
+        document.getElementById("status").innerText = "手を近づけてください";
+        stableCount = 0;
+        requestAnimationFrame(loop);
+        return;
+      }
+
       // 縦向き
-      if (height > width) {
+      if (height > width * 0.8) {
         guide.classList.remove("ok");
         guide.classList.add("ng");
         document.getElementById("status").innerText = "横向きにしてください";
         stableCount = 0;
+        requestAnimationFrame(loop);
+        return;
       }
-      // 小さい
-      else if (width < 60) {
-        guide.classList.remove("ok");
-        guide.classList.add("ng");
-        document.getElementById("status").innerText = "手を近づけてください";
-        stableCount = 0;
-      }
+
       // OK
-      else {
-        guide.classList.remove("ng");
-        guide.classList.add("ok");
-        document.getElementById("status").innerText = "OK";
+      guide.classList.remove("ng");
+      guide.classList.add("ok");
+      document.getElementById("status").innerText = "OK（そのまま維持）";
 
-        stableCount++;
+      stableCount++;
 
-        if (stableCount > 10) {
-          scale = HAND_WIDTH_CM / width;
-          handMode = false;
+      if (stableCount > 20) {
+        scale = HAND_WIDTH_CM / width;
+        handMode = false;
 
-          guide.style.display = "none";
+        guide.style.display = "none";
 
-          document.getElementById("scaleInfo").innerText =
-            "手スケール設定済（" + HAND_WIDTH_CM + "cm）";
+        document.getElementById("scaleInfo").innerText =
+          "手スケール設定済（" + HAND_WIDTH_CM + "cm）";
 
-          document.getElementById("status").innerText = "登録完了";
-        }
+        document.getElementById("status").innerText = "登録完了";
       }
 
       requestAnimationFrame(loop);
@@ -251,7 +253,7 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
-// 幅＋高さ取得（安定版）
+// 幅高さ取得（ノイズ対策済）
 function detectWH() {
   if (!video.videoWidth) return { width:0, height:0 };
 
@@ -296,7 +298,8 @@ function detectWH() {
   let width = right - left;
   let height = bottom - top;
 
-  if (width < 30) return { width:0, height:0 };
+  // ノイズ除去
+  if (width < 50 || height < 50) return { width:0, height:0 };
 
   return { width, height };
 }
