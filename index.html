@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v7.0</title>
+<title>樹種＋直径測定 v7.5</title>
 
 <style>
 body {
@@ -86,7 +86,7 @@ button {
 
 <body>
 
-<div id="version">v7.0 完全版</div>
+<div id="version">v7.5 幹検出強化版</div>
 
 <div id="instruction">
 ①開始 → ②手登録（横向き） → ③同じ距離で測定
@@ -193,7 +193,6 @@ async function loop() {
         return;
       }
 
-      // 安定判定
       widthHistory.push(width);
       if (widthHistory.length > 10) widthHistory.shift();
 
@@ -203,11 +202,11 @@ async function loop() {
       if (max - min < 10) {
         guide.classList.remove("ng");
         guide.classList.add("ok");
-        document.getElementById("status").innerText = "OK（固定してください）";
+        document.getElementById("status").innerText = "OK（固定）";
         stableCount++;
       } else {
         guide.classList.add("ng");
-        document.getElementById("status").innerText = "手を動かさないでください";
+        document.getElementById("status").innerText = "動かさないで";
         stableCount = 0;
       }
 
@@ -230,7 +229,7 @@ async function loop() {
       let diff = Math.abs(width - baseWidth);
 
       if (diff > baseWidth * 0.2) {
-        document.getElementById("distanceInfo").innerText = "距離が違います";
+        document.getElementById("distanceInfo").innerText = "距離NG";
         document.getElementById("status").innerText = "距離を合わせてください";
         requestAnimationFrame(loop);
         return;
@@ -266,7 +265,9 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
+// ★幹検出（強化版）
 function detectWH() {
+
   if (!video.videoWidth) return { width:0, height:0 };
 
   const canvas = document.createElement("canvas");
@@ -282,37 +283,40 @@ function detectWH() {
   const w = canvas.width;
   const h = canvas.height;
 
-  const cx = Math.floor(w/2);
-  const cy = Math.floor(h/2);
+  const x1 = Math.floor(w * 0.35);
+  const x2 = Math.floor(w * 0.65);
+  const y1 = Math.floor(h * 0.40);
+  const y2 = Math.floor(h * 0.60);
 
-  let left=cx, right=cx, top=cy, bottom=cy;
+  let widths = [];
 
-  for (let x=cx; x>cx-200; x--) {
-    if (Math.abs(img.data[(cy*w+x)*4] - img.data[(cy*w+x-3)*4]) > 80) break;
-    left = x;
+  for (let y = y1; y < y2; y += 5) {
+
+    let left = -1;
+    let right = -1;
+
+    for (let x = x1; x < x2; x++) {
+
+      const i = (y*w + x) * 4;
+      const gray = (img.data[i]+img.data[i+1]+img.data[i+2])/3;
+
+      if (gray > 50 && gray < 200) {
+        if (left === -1) left = x;
+        right = x;
+      }
+    }
+
+    if (left !== -1 && right !== -1) {
+      widths.push(right - left);
+    }
   }
 
-  for (let x=cx; x<cx+200; x++) {
-    if (Math.abs(img.data[(cy*w+x)*4] - img.data[(cy*w+x+3)*4]) > 80) break;
-    right = x;
-  }
+  if (widths.length < 5) return { width:0, height:0 };
 
-  for (let y=cy; y>cy-200; y--) {
-    if (Math.abs(img.data[(y*w+cx)*4] - img.data[((y-3)*w+cx)*4]) > 80) break;
-    top = y;
-  }
+  widths.sort((a,b)=>a-b);
+  const width = widths[Math.floor(widths.length/2)];
 
-  for (let y=cy; y<cy+200; y++) {
-    if (Math.abs(img.data[(y*w+cx)*4] - img.data[((y+3)*w+cx)*4]) > 80) break;
-    bottom = y;
-  }
-
-  let width = right - left;
-  let height = bottom - top;
-
-  if (width < 50 || height < 50) return { width:0, height:0 };
-
-  return { width, height };
+  return { width: width, height: 100 };
 }
 </script>
 
