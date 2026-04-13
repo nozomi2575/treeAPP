@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v5.4</title>
+<title>樹種＋直径測定 v5.5</title>
 
 <style>
 body {
@@ -92,7 +92,7 @@ button {
 
 <body>
 
-<div id="version">v5.4 実用完成版</div>
+<div id="version">v5.5 精度安定版</div>
 
 <div id="guide">
 ①開始 → ②スケール → ③記録 → 測定
@@ -206,6 +206,11 @@ function recordScale() {
   }, 300);
 }
 
+function getMedian(arr) {
+  const sorted = [...arr].sort((a,b)=>a-b);
+  return sorted[Math.floor(sorted.length/2)];
+}
+
 async function loop() {
   if (video.readyState === 4) {
 
@@ -222,11 +227,11 @@ async function loop() {
       return;
     }
 
-    // ===== 距離判定 =====
+    // 距離判定
     let statusText = "測定不可";
     let statusColor = "white";
 
-    if (width < 30) {
+    if (width < 50) {
       statusText = "遠い";
       statusColor = "blue";
     } else if (width > video.videoWidth * 0.5) {
@@ -250,17 +255,29 @@ async function loop() {
     diameterHistory.push(diameter);
     if (diameterHistory.length > 5) diameterHistory.shift();
 
-    let avg = diameterHistory.reduce((a,b)=>a+b,0) / diameterHistory.length;
-    avg = Math.round(avg);
+    // ブレ検出
+    if (diameterHistory.length >= 3) {
+      const max = Math.max(...diameterHistory);
+      const min = Math.min(...diameterHistory);
 
-    document.getElementById("result").innerText = avg + " cm";
+      if (max - min > 10) {
+        document.getElementById("status").innerText = "不安定";
+        document.getElementById("status").style.color = "orange";
+        requestAnimationFrame(loop);
+        return;
+      }
+    }
+
+    // 中央値採用
+    let stable = getMedian(diameterHistory);
+
+    document.getElementById("result").innerText = stable + " cm";
     document.getElementById("sub").innerText = "暫定：" + diameter + " cm";
   }
 
   requestAnimationFrame(loop);
 }
 
-// ===== ガイド内検出 =====
 function detectWidth() {
   if (!video.videoWidth) return 0;
 
@@ -340,7 +357,7 @@ function detectWidth() {
 
   const width = right - left;
 
-  if (width < 20 || width > w * 0.6) return 0;
+  if (width < 50 || width > w * 0.6) return 0;
 
   return width;
 }
