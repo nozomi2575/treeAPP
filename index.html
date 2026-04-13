@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v5.0</title>
+<title>樹種＋直径測定 v5.1</title>
 
 <style>
 body {
@@ -13,21 +13,18 @@ body {
   margin: 0;
 }
 
-/* バージョン */
 #version {
   font-size: 16px;
   color: gray;
   margin: 5px;
 }
 
-/* ガイド */
 #guide {
   font-size: 20px;
   color: #ccc;
   margin: 10px;
 }
 
-/* ボタン */
 button {
   width: 90%;
   max-width: 500px;
@@ -42,12 +39,12 @@ button {
 #scaleBtn { background: orange; }
 #recordBtn { background: red; }
 
-/* 映像 */
 #videoWrapper {
   position: relative;
+  display: inline-block;
 }
 
-#webcam {
+#webcam, #freezeCanvas {
   width: 95vw;
   max-width: 600px;
 }
@@ -55,10 +52,12 @@ button {
 /* 中央線 */
 #line {
   position: absolute;
+  top: 0;
   left: 50%;
   width: 4px;
   height: 100%;
   background: red;
+  transform: translateX(-50%);
 }
 
 /* コの字 */
@@ -73,7 +72,6 @@ button {
   display: none;
 }
 
-/* 表示 */
 .box {
   background: rgba(0,0,0,0.7);
   padding: 15px;
@@ -87,12 +85,15 @@ button {
 #status { font-size: 28px; }
 #scaleInfo { font-size: 22px; color: yellow; }
 
+#freezeCanvas {
+  display: none;
+}
 </style>
 </head>
 
 <body>
 
-<div id="version">v5.0 最終UI版</div>
+<div id="version">v5.1 最終安定版</div>
 
 <div id="guide">
 ①開始 → ②スケール → ③記録 → 測定
@@ -104,6 +105,7 @@ button {
 
 <div id="videoWrapper">
   <video id="webcam" playsinline></video>
+  <canvas id="freezeCanvas"></canvas>
   <div id="line"></div>
   <div id="scaleBox"></div>
 </div>
@@ -115,8 +117,6 @@ button {
   <div id="sub">暫定：-- cm</div>
   <div id="scaleInfo">スケール未設定</div>
 </div>
-
-<canvas id="freezeCanvas" style="display:none;"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
@@ -155,7 +155,6 @@ async function init() {
   };
 }
 
-// ===== スケールモード =====
 function enterScaleMode() {
   mode = "scale";
   frozen = false;
@@ -163,7 +162,6 @@ function enterScaleMode() {
   document.getElementById("status").innerText = "② スケールを枠に合わせる";
 }
 
-// ===== 記録（フリーズ） =====
 function recordScale() {
   if (mode !== "scale") return;
 
@@ -174,6 +172,11 @@ function recordScale() {
   canvas.height = video.videoHeight;
 
   ctx.drawImage(video, 0, 0);
+
+  // ★画面フリーズ
+  canvas.style.display = "block";
+  video.style.display = "none";
+
   frozenImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
   frozen = true;
 
@@ -192,11 +195,17 @@ function recordScale() {
   document.getElementById("scaleInfo").innerText =
     "スケール設定済：" + real + "cm";
 
+  // ★少し見せてから復帰（重要）
+  setTimeout(() => {
+    canvas.style.display = "none";
+    video.style.display = "block";
+    frozen = false;
+  }, 500);
+
   document.getElementById("scaleBox").style.display = "none";
   mode = "measure";
 }
 
-// ===== メイン =====
 async function loop() {
   if (video.readyState === 4) {
 
@@ -235,7 +244,6 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
-// ===== 幅検出 =====
 function detectWidth() {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
