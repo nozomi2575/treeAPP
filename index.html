@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定</title>
+<title>樹種＋直径測定（手スケール）</title>
 
 <style>
 body {
@@ -21,93 +21,58 @@ body {
 
 h2 {
   font-size: 32px;
-  margin: 5px 0;
 }
 
-#startBtn {
-  font-size: 32px;
-  padding: 18px 50px;
-  border-radius: 12px;
+button {
+  font-size: 26px;
+  padding: 12px 30px;
+  margin: 5px;
+  border-radius: 10px;
   border: none;
-  background: #2ecc71;
-  color: white;
 }
+
+#startBtn { background: #2ecc71; }
+#setHandBtn { background: orange; }
 
 #videoWrapper {
   position: relative;
-  display: inline-block;
 }
 
 #webcam {
-  width: 98vw;
-  max-width: 600px;
-  border-radius: 14px;
-}
-
-#line {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 5px;
-  height: 100%;
-  background: red;
-  opacity: 0.85;
-}
-
-.box {
-  background: rgba(0,0,0,0.7);
-  padding: 20px;
-  border-radius: 14px;
-  margin: 15px auto;
   width: 95vw;
   max-width: 600px;
 }
 
-#species {
-  font-size: 60px;
-  font-weight: bold;
-  color: #00ffff;
+#line {
+  position: absolute;
+  left: 50%;
+  width: 4px;
+  height: 100%;
+  background: red;
 }
 
-#result {
-  font-size: 80px;
-  font-weight: bold;
+.box {
+  background: rgba(0,0,0,0.7);
+  padding: 15px;
+  margin: 10px;
+  border-radius: 10px;
 }
 
-#status {
-  font-size: 30px;
-  margin: 10px 0;
-}
-
-#distance {
-  font-size: 30px;
-  margin: 10px 0;
-}
-
-#subResult {
-  font-size: 28px;
-  color: lightgray;
-}
-
-@keyframes blink {
-  0% {opacity: 1;}
-  50% {opacity: 0.3;}
-  100% {opacity: 1;}
-}
-
-.measuring {
-  animation: blink 1s infinite;
-}
+#species { font-size: 50px; color: cyan; }
+#result { font-size: 70px; }
+#sub { font-size: 30px; color: gray; }
+#status { font-size: 28px; }
 </style>
 </head>
 
 <body>
 
-<div id="version">樹種＋直径測定 v2.4</div>
+<div id="version">v3.0 手スケール</div>
 
 <h2>樹種＋直径測定</h2>
 
-<button id="startBtn">▶ 開始</button><br><br>
+<button id="startBtn">▶開始</button>
+<button id="setHandBtn">✋手を登録</button>
 
 <div id="videoWrapper">
   <video id="webcam" playsinline></video>
@@ -118,8 +83,7 @@ h2 {
   <div id="species">---</div>
   <div id="result">-- cm</div>
   <div id="status">待機中</div>
-  <div id="distance">距離：---</div>
-  <div id="subResult">暫定値：-- cm</div>
+  <div id="sub">暫定：-- cm</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
@@ -128,40 +92,26 @@ h2 {
 <script>
 const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
+// ★ここだけ自分の手に合わせる
+const HAND_REAL_CM = 18;
+
 let model, video;
 
+let handScale = null;
+
 let history = [];
-const MAX_HISTORY = 10;
-
 let diameterHistory = [];
-const MAX_DIAMETER_HISTORY = 10;
-let prevDiameter = 0;
 
-let stableCount = 0;
-let stableDiameter = 0;
-const STABLE_THRESHOLD = 1;
-const STABLE_FRAMES = 5;
-
-let lastTempDiameter = "--";
-
-const THRESHOLD = 0.7;
-const DIFF_THRESHOLD = 0.1;
-
-const SCALE = 0.5; // ★重要：少し上げる
-
-document.getElementById("startBtn").addEventListener("click", init);
+document.getElementById("startBtn").onclick = init;
+document.getElementById("setHandBtn").onclick = registerHand;
 
 async function init() {
-  const modelURL = URL + "model.json";
-  const metadataURL = URL + "metadata.json";
-
-  model = await tmImage.load(modelURL, metadataURL);
+  model = await tmImage.load(URL+"model.json", URL+"metadata.json");
 
   video = document.getElementById("webcam");
 
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "environment" },
-    audio: false
+    video: { facingMode: "environment" }
   });
 
   video.srcObject = stream;
@@ -172,115 +122,57 @@ async function init() {
   };
 }
 
-// ===== 距離判定 =====
-function getDistanceLabel(width, videoWidth) {
-  const ratio = width / videoWidth;
+// ===== 手登録 =====
+function registerHand() {
+  const width = detectWidth();
 
-  if (ratio > 0.6) return ["近すぎ", "red"];
-  if (ratio > 0.35) return ["適正距離", "lime"];
-  if (ratio > 0.15) return ["やや遠い", "orange"];
-  return ["遠い", "orange"];
+  if (width > 0) {
+    handScale = HAND_REAL_CM / width;
+    alert("手を登録しました");
+  } else {
+    alert("手がうまく検出できません");
+  }
 }
 
+// ===== メインループ =====
 async function loop() {
   if (video.readyState === 4) {
 
     // ===== 樹種 =====
     const prediction = await model.predict(video);
 
-    history.push(prediction);
-    if (history.length > MAX_HISTORY) history.shift();
+    let best = prediction.sort((a,b)=>b.probability-a.probability)[0];
 
-    let avg = {};
-    history.forEach(p => {
-      p.forEach(item => {
-        avg[item.className] = (avg[item.className] || 0) + item.probability;
-      });
-    });
+    document.getElementById("species").innerText =
+      best.probability > 0.7 ? best.className : "該当なし";
 
-    let sorted = Object.keys(avg).map(k => ({
-      className: k,
-      probability: avg[k] / history.length
-    })).sort((a,b)=>b.probability-a.probability);
-
-    let best = sorted[0];
-    let second = sorted[1];
-
-    let species = "該当なし";
-
-    if (
-      best.className !== "該当なし" &&
-      best.probability > THRESHOLD &&
-      (best.probability - second.probability) > DIFF_THRESHOLD
-    ) {
-      species = best.className;
-    }
-
-    document.getElementById("species").innerText = species;
-
-    // ===== 幅検出 =====
+    // ===== 幅 =====
     const width = detectWidth();
 
-    const [label, color] = getDistanceLabel(width, video.videoWidth);
-    document.getElementById("distance").innerHTML =
-      "<span style='color:" + color + "'>距離：" + label + "</span>";
-
-    if (width === 0) {
-      document.getElementById("result").innerText = "-- cm";
-      document.getElementById("status").innerText = "対象なし";
-      document.getElementById("subResult").innerText =
-        "暫定値：" + lastTempDiameter + " cm";
+    if (width === 0 || !handScale) {
+      document.getElementById("status").innerText = "測定不可";
       requestAnimationFrame(loop);
       return;
     }
 
-    let diameterRaw = width * SCALE;
-    let tempDiameter = Math.round(diameterRaw);
-    lastTempDiameter = tempDiameter;
+    let diameter = Math.round(width * handScale);
 
-    diameterHistory.push(diameterRaw);
-    if (diameterHistory.length > MAX_DIAMETER_HISTORY) {
-      diameterHistory.shift();
-    }
+    diameterHistory.push(diameter);
+    if (diameterHistory.length > 5) diameterHistory.shift();
 
-    let sum = 0;
-    diameterHistory.forEach(d => sum += d);
-    let diameter = sum / diameterHistory.length;
+    let avg = diameterHistory.reduce((a,b)=>a+b,0) / diameterHistory.length;
+    avg = Math.round(avg);
 
-    if (Math.abs(diameter - prevDiameter) < 1) {
-      diameter = prevDiameter;
-    }
+    document.getElementById("result").innerText = avg + " cm";
+    document.getElementById("sub").innerText = "暫定：" + diameter + " cm";
+    document.getElementById("status").innerText = "測定中";
 
-    prevDiameter = diameter;
-    diameter = Math.round(diameter);
-
-    if (Math.abs(diameter - stableDiameter) < STABLE_THRESHOLD) {
-      stableCount++;
-    } else {
-      stableCount = 0;
-    }
-
-    stableDiameter = diameter;
-
-    if (stableCount >= STABLE_FRAMES) {
-      document.getElementById("result").innerHTML =
-        "<span style='color:yellow'>" + diameter + " cm</span>";
-      document.getElementById("status").innerText = "測定完了";
-      if (navigator.vibrate) navigator.vibrate(200);
-    } else {
-      document.getElementById("result").innerHTML =
-        "<span class='measuring'>" + diameter + " cm</span>";
-      document.getElementById("status").innerText = "測定中...";
-    }
-
-    document.getElementById("subResult").innerText =
-      "暫定値：" + lastTempDiameter + " cm";
   }
 
   requestAnimationFrame(loop);
 }
 
-// ===== 改良版 幹検出 =====
+// ===== 幅検出（エッジ） =====
 function detectWidth() {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -292,56 +184,44 @@ function detectWidth() {
 
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-  const width = canvas.width;
-  const height = canvas.height;
-  const center = Math.floor(width / 2);
+  const w = canvas.width;
+  const h = canvas.height;
+  const center = Math.floor(w/2);
 
-  let widths = [];
+  let left = center;
+  let right = center;
 
-  for (let y = Math.floor(height * 0.3); y < Math.floor(height * 0.7); y += 20) {
+  for (let x = center; x > 5; x--) {
+    const i = (Math.floor(h/2)*w + x)*4;
+    const i2 = (Math.floor(h/2)*w + (x-5))*4;
 
-    let left = center;
-    let right = center;
+    const diff =
+      Math.abs(img.data[i]-img.data[i2]) +
+      Math.abs(img.data[i+1]-img.data[i2+1]) +
+      Math.abs(img.data[i+2]-img.data[i2+2]);
 
-    // 左
-    for (let x = center; x > 5; x--) {
-      const i = (y * width + x) * 4;
-      const i2 = (y * width + (x - 5)) * 4;
-
-      const diff =
-        Math.abs(img.data[i] - img.data[i2]) +
-        Math.abs(img.data[i+1] - img.data[i2+1]) +
-        Math.abs(img.data[i+2] - img.data[i2+2]);
-
-      if (diff > 60) break;
-      left = x;
-    }
-
-    // 右
-    for (let x = center; x < width - 5; x++) {
-      const i = (y * width + x) * 4;
-      const i2 = (y * width + (x + 5)) * 4;
-
-      const diff =
-        Math.abs(img.data[i] - img.data[i2]) +
-        Math.abs(img.data[i+1] - img.data[i2+1]) +
-        Math.abs(img.data[i+2] - img.data[i2+2]);
-
-      if (diff > 60) break;
-      right = x;
-    }
-
-    const w = right - left;
-
-    if (w > 30 && w < width * 0.9) {
-      widths.push(w);
-    }
+    if (diff > 60) break;
+    left = x;
   }
 
-  if (widths.length < 3) return 0;
+  for (let x = center; x < w-5; x++) {
+    const i = (Math.floor(h/2)*w + x)*4;
+    const i2 = (Math.floor(h/2)*w + (x+5))*4;
 
-  widths.sort((a,b)=>a-b);
-  return widths[Math.floor(widths.length/2)];
+    const diff =
+      Math.abs(img.data[i]-img.data[i2]) +
+      Math.abs(img.data[i+1]-img.data[i2+1]) +
+      Math.abs(img.data[i+2]-img.data[i2+2]);
+
+    if (diff > 60) break;
+    right = x;
+  }
+
+  const width = right - left;
+
+  if (width < 20 || width > w*0.9) return 0;
+
+  return width;
 }
 </script>
 
