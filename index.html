@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v5.5</title>
+<title>樹種＋直径測定 v6.0</title>
 
 <style>
 body {
@@ -14,7 +14,6 @@ body {
 }
 
 #version { font-size: 16px; color: gray; margin: 5px; }
-#guide { font-size: 20px; color: #ccc; margin: 10px; }
 
 button {
   width: 90%;
@@ -27,20 +26,18 @@ button {
 }
 
 #startBtn { background: #2ecc71; }
-#scaleBtn { background: orange; }
-#recordBtn { background: red; }
+#handBtn { background: orange; }
 
 #videoWrapper {
   position: relative;
   display: inline-block;
 }
 
-#webcam, #freezeCanvas {
+#webcam {
   width: 95vw;
   max-width: 600px;
 }
 
-/* 中央線 */
 #line {
   position: absolute;
   top: 0;
@@ -51,7 +48,6 @@ button {
   transform: translateX(-50%);
 }
 
-/* ガイド枠 */
 #guideBox {
   position: absolute;
   top: 40%;
@@ -59,18 +55,6 @@ button {
   width: 30%;
   height: 20%;
   border: 3px solid yellow;
-}
-
-/* スケール枠 */
-#scaleBox {
-  position: absolute;
-  top: 25%;
-  left: 20%;
-  width: 60%;
-  height: 20%;
-  border: 4px solid red;
-  border-bottom: none;
-  display: none;
 }
 
 .box {
@@ -86,28 +70,20 @@ button {
 #status { font-size: 32px; }
 #scaleInfo { font-size: 22px; color: yellow; }
 
-#freezeCanvas { display: none; }
 </style>
 </head>
 
 <body>
 
-<div id="version">v5.5 精度安定版</div>
-
-<div id="guide">
-①開始 → ②スケール → ③記録 → 測定
-</div>
+<div id="version">v6.0 手スケール版</div>
 
 <button id="startBtn">① ▶開始</button>
-<button id="scaleBtn">② 📏スケール設定</button>
-<button id="recordBtn">③ ✔記録（cm入力）</button>
+<button id="handBtn">② ✋手を登録</button>
 
 <div id="videoWrapper">
   <video id="webcam" playsinline></video>
-  <canvas id="freezeCanvas"></canvas>
   <div id="line"></div>
   <div id="guideBox"></div>
-  <div id="scaleBox"></div>
 </div>
 
 <div class="box">
@@ -115,7 +91,7 @@ button {
   <div id="result">-- cm</div>
   <div id="status">待機中</div>
   <div id="sub">暫定：-- cm</div>
-  <div id="scaleInfo">スケール未設定</div>
+  <div id="scaleInfo">手スケール未登録</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
@@ -125,15 +101,13 @@ button {
 const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
 let model, video;
-let mode = "measure";
 let scale = null;
-let frozen = false;
-let frozenImage = null;
 let diameterHistory = [];
 
+const HAND_WIDTH_CM = 8; // ★ここ調整
+
 document.getElementById("startBtn").onclick = init;
-document.getElementById("scaleBtn").onclick = enterScaleMode;
-document.getElementById("recordBtn").onclick = recordScale;
+document.getElementById("handBtn").onclick = registerHand;
 
 async function init() {
   model = await tmImage.load(URL+"model.json", URL+"metadata.json");
@@ -152,58 +126,18 @@ async function init() {
   };
 }
 
-function enterScaleMode() {
-  mode = "scale";
-  frozen = false;
-  document.getElementById("scaleBox").style.display = "block";
-  document.getElementById("status").innerText = "② スケールを枠に合わせる";
-}
-
-function recordScale() {
-  if (mode !== "scale") return;
-
-  const canvas = document.getElementById("freezeCanvas");
-  const ctx = canvas.getContext("2d");
-
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-
-  ctx.drawImage(video, 0, 0);
-
-  canvas.style.display = "block";
-  video.style.display = "none";
-
-  frozenImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  frozen = true;
-
+function registerHand() {
   const width = detectWidth();
 
   if (width === 0) {
-    alert("スケール検出失敗");
+    alert("手を中央に出してください");
     return;
   }
 
-  const real = prompt("この幅は何cmですか？");
-  if (!real) return;
-
-  scale = real / width;
+  scale = HAND_WIDTH_CM / width;
 
   document.getElementById("scaleInfo").innerText =
-    "スケール設定済：" + real + "cm";
-
-  document.getElementById("scaleBox").style.display = "none";
-  mode = "measure";
-
-  setTimeout(() => {
-    canvas.style.display = "none";
-    video.style.display = "block";
-
-    video.srcObject.getTracks().forEach(t => t.enabled = false);
-    video.srcObject.getTracks().forEach(t => t.enabled = true);
-
-    video.play();
-    frozen = false;
-  }, 300);
+    "手スケール設定済（" + HAND_WIDTH_CM + "cm）";
 }
 
 function getMedian(arr) {
@@ -222,30 +156,7 @@ async function loop() {
 
     const width = detectWidth();
 
-    if (mode === "scale") {
-      requestAnimationFrame(loop);
-      return;
-    }
-
-    // 距離判定
-    let statusText = "測定不可";
-    let statusColor = "white";
-
-    if (width < 50) {
-      statusText = "遠い";
-      statusColor = "blue";
-    } else if (width > video.videoWidth * 0.5) {
-      statusText = "近い";
-      statusColor = "red";
-    } else {
-      statusText = "OK";
-      statusColor = "lime";
-    }
-
-    document.getElementById("status").innerText = statusText;
-    document.getElementById("status").style.color = statusColor;
-
-    if (!scale || width === 0 || statusText !== "OK") {
+    if (!scale || width === 0) {
       requestAnimationFrame(loop);
       return;
     }
@@ -255,29 +166,17 @@ async function loop() {
     diameterHistory.push(diameter);
     if (diameterHistory.length > 5) diameterHistory.shift();
 
-    // ブレ検出
-    if (diameterHistory.length >= 3) {
-      const max = Math.max(...diameterHistory);
-      const min = Math.min(...diameterHistory);
-
-      if (max - min > 10) {
-        document.getElementById("status").innerText = "不安定";
-        document.getElementById("status").style.color = "orange";
-        requestAnimationFrame(loop);
-        return;
-      }
-    }
-
-    // 中央値採用
     let stable = getMedian(diameterHistory);
 
     document.getElementById("result").innerText = stable + " cm";
     document.getElementById("sub").innerText = "暫定：" + diameter + " cm";
+    document.getElementById("status").innerText = "測定中";
   }
 
   requestAnimationFrame(loop);
 }
 
+// 同じ検出ロジック
 function detectWidth() {
   if (!video.videoWidth) return 0;
 
@@ -287,11 +186,7 @@ function detectWidth() {
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
-  if (frozen && frozenImage) {
-    ctx.putImageData(frozenImage, 0, 0);
-  } else {
-    ctx.drawImage(video, 0, 0);
-  }
+  ctx.drawImage(video, 0, 0);
 
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
@@ -308,50 +203,32 @@ function detectWidth() {
   let right = centerX;
 
   for (let x = centerX; x > centerX - scanHalfWidth; x--) {
-
     let diffSum = 0;
 
     for (let dy = -scanHeight/2; dy < scanHeight/2; dy += 2) {
       const y = centerY + dy;
-
       const i = (y * w + x) * 4;
       const i2 = (y * w + (x-3)) * 4;
 
-      const diff =
-        Math.abs(img.data[i] - img.data[i2]) +
-        Math.abs(img.data[i+1] - img.data[i2+1]) +
-        Math.abs(img.data[i+2] - img.data[i2+2]);
-
-      diffSum += diff;
+      diffSum += Math.abs(img.data[i] - img.data[i2]);
     }
 
-    const avgDiff = diffSum / (scanHeight / 2);
-
-    if (avgDiff > 80) break;
+    if (diffSum > 80) break;
     left = x;
   }
 
   for (let x = centerX; x < centerX + scanHalfWidth; x++) {
-
     let diffSum = 0;
 
     for (let dy = -scanHeight/2; dy < scanHeight/2; dy += 2) {
       const y = centerY + dy;
-
       const i = (y * w + x) * 4;
       const i2 = (y * w + (x+3)) * 4;
 
-      const diff =
-        Math.abs(img.data[i] - img.data[i2]) +
-        Math.abs(img.data[i+1] - img.data[i2+1]) +
-        Math.abs(img.data[i+2] - img.data[i2+2]);
-
-      diffSum += diff;
+      diffSum += Math.abs(img.data[i] - img.data[i2]);
     }
 
-    const avgDiff = diffSum / (scanHeight / 2);
-
-    if (avgDiff > 80) break;
+    if (diffSum > 80) break;
     right = x;
   }
 
