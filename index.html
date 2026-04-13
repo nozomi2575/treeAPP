@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定（スケール方式）</title>
+<title>樹種＋直径測定 v5.0</title>
 
 <style>
 body {
@@ -13,26 +13,36 @@ body {
   margin: 0;
 }
 
+/* バージョン */
 #version {
   font-size: 16px;
   color: gray;
-  margin-top: 5px;
+  margin: 5px;
 }
 
-h2 { font-size: 28px; }
+/* ガイド */
+#guide {
+  font-size: 20px;
+  color: #ccc;
+  margin: 10px;
+}
 
+/* ボタン */
 button {
-  font-size: 22px;
-  padding: 10px 20px;
-  margin: 5px;
-  border-radius: 10px;
-  border: none;
+  width: 90%;
+  max-width: 500px;
+  font-size: 28px;
+  padding: 18px;
+  margin: 10px auto;
+  border-radius: 15px;
+  display: block;
 }
 
 #startBtn { background: #2ecc71; }
 #scaleBtn { background: orange; }
 #recordBtn { background: red; }
 
+/* 映像 */
 #videoWrapper {
   position: relative;
 }
@@ -42,7 +52,16 @@ button {
   max-width: 600px;
 }
 
-/* コの字ガイド */
+/* 中央線 */
+#line {
+  position: absolute;
+  left: 50%;
+  width: 4px;
+  height: 100%;
+  background: red;
+}
+
+/* コの字 */
 #scaleBox {
   position: absolute;
   top: 25%;
@@ -54,34 +73,38 @@ button {
   display: none;
 }
 
+/* 表示 */
 .box {
   background: rgba(0,0,0,0.7);
-  padding: 12px;
+  padding: 15px;
   margin: 10px;
   border-radius: 10px;
 }
 
-#species { font-size: 45px; color: cyan; }
-#result { font-size: 65px; }
-#sub { font-size: 26px; color: gray; }
-#status { font-size: 24px; }
-#scaleInfo { font-size: 20px; color: yellow; }
+#species { font-size: 50px; color: cyan; }
+#result { font-size: 70px; }
+#sub { font-size: 30px; color: gray; }
+#status { font-size: 28px; }
+#scaleInfo { font-size: 22px; color: yellow; }
 
 </style>
 </head>
 
 <body>
 
-<div id="version">v4.0 コの字スケール</div>
+<div id="version">v5.0 最終UI版</div>
 
-<h2>樹種＋直径測定</h2>
+<div id="guide">
+①開始 → ②スケール → ③記録 → 測定
+</div>
 
-<button id="startBtn">▶開始</button>
-<button id="scaleBtn">📏スケール設定</button>
-<button id="recordBtn">✔記録</button>
+<button id="startBtn">① ▶開始</button>
+<button id="scaleBtn">② 📏スケール設定</button>
+<button id="recordBtn">③ ✔記録（cm入力）</button>
 
 <div id="videoWrapper">
   <video id="webcam" playsinline></video>
+  <div id="line"></div>
   <div id="scaleBox"></div>
 </div>
 
@@ -93,6 +116,8 @@ button {
   <div id="scaleInfo">スケール未設定</div>
 </div>
 
+<canvas id="freezeCanvas" style="display:none;"></canvas>
+
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
@@ -101,9 +126,11 @@ const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
 let model, video;
 
-let mode = "measure"; // measure / scale
+let mode = "measure";
 let scale = null;
-let scaleWidthPx = null;
+
+let frozen = false;
+let frozenImage = null;
 
 let diameterHistory = [];
 
@@ -131,27 +158,36 @@ async function init() {
 // ===== スケールモード =====
 function enterScaleMode() {
   mode = "scale";
+  frozen = false;
   document.getElementById("scaleBox").style.display = "block";
-  document.getElementById("status").innerText = "スケール設定中";
+  document.getElementById("status").innerText = "② スケールを枠に合わせる";
 }
 
-// ===== 記録 =====
+// ===== 記録（フリーズ） =====
 function recordScale() {
   if (mode !== "scale") return;
+
+  const canvas = document.getElementById("freezeCanvas");
+  const ctx = canvas.getContext("2d");
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  ctx.drawImage(video, 0, 0);
+  frozenImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  frozen = true;
 
   const width = detectWidth();
 
   if (width === 0) {
-    alert("スケールが検出できません");
+    alert("スケール検出失敗");
     return;
   }
 
   const real = prompt("この幅は何cmですか？");
-
   if (!real) return;
 
   scale = real / width;
-  scaleWidthPx = width;
 
   document.getElementById("scaleInfo").innerText =
     "スケール設定済：" + real + "cm";
@@ -164,7 +200,6 @@ function recordScale() {
 async function loop() {
   if (video.readyState === 4) {
 
-    // 樹種
     const prediction = await model.predict(video);
     let best = prediction.sort((a,b)=>b.probability-a.probability)[0];
 
@@ -174,7 +209,6 @@ async function loop() {
     const width = detectWidth();
 
     if (mode === "scale") {
-      document.getElementById("status").innerText = "スケール合わせ中";
       requestAnimationFrame(loop);
       return;
     }
@@ -195,7 +229,7 @@ async function loop() {
 
     document.getElementById("result").innerText = avg + " cm";
     document.getElementById("sub").innerText = "暫定：" + diameter + " cm";
-    document.getElementById("status").innerText = "測定中";
+    document.getElementById("status").innerText = "③ 測定中";
   }
 
   requestAnimationFrame(loop);
@@ -209,7 +243,11 @@ function detectWidth() {
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
-  ctx.drawImage(video, 0, 0);
+  if (frozen && frozenImage) {
+    ctx.putImageData(frozenImage, 0, 0);
+  } else {
+    ctx.drawImage(video, 0, 0);
+  }
 
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
