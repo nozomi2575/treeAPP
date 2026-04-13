@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v6.0</title>
+<title>樹種＋直径測定 v6.1</title>
 
 <style>
 body {
@@ -38,6 +38,7 @@ button {
   max-width: 600px;
 }
 
+/* 中央線 */
 #line {
   position: absolute;
   top: 0;
@@ -48,6 +49,7 @@ button {
   transform: translateX(-50%);
 }
 
+/* 幹ガイド */
 #guideBox {
   position: absolute;
   top: 40%;
@@ -55,6 +57,17 @@ button {
   width: 30%;
   height: 20%;
   border: 3px solid yellow;
+}
+
+/* 手ガイド */
+#handGuide {
+  position: absolute;
+  top: 35%;
+  left: 30%;
+  width: 40%;
+  height: 25%;
+  border: 3px dashed cyan;
+  display: none;
 }
 
 .box {
@@ -75,7 +88,7 @@ button {
 
 <body>
 
-<div id="version">v6.0 手スケール版</div>
+<div id="version">v6.1 片手対応版</div>
 
 <button id="startBtn">① ▶開始</button>
 <button id="handBtn">② ✋手を登録</button>
@@ -84,6 +97,7 @@ button {
   <video id="webcam" playsinline></video>
   <div id="line"></div>
   <div id="guideBox"></div>
+  <div id="handGuide"></div>
 </div>
 
 <div class="box">
@@ -103,11 +117,13 @@ const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 let model, video;
 let scale = null;
 let diameterHistory = [];
+let handMode = false;
+let handStableCount = 0;
 
-const HAND_WIDTH_CM = 8; // ★ここ調整
+const HAND_WIDTH_CM = 8;
 
 document.getElementById("startBtn").onclick = init;
-document.getElementById("handBtn").onclick = registerHand;
+document.getElementById("handBtn").onclick = enterHandMode;
 
 async function init() {
   model = await tmImage.load(URL+"model.json", URL+"metadata.json");
@@ -126,18 +142,11 @@ async function init() {
   };
 }
 
-function registerHand() {
-  const width = detectWidth();
-
-  if (width === 0) {
-    alert("手を中央に出してください");
-    return;
-  }
-
-  scale = HAND_WIDTH_CM / width;
-
-  document.getElementById("scaleInfo").innerText =
-    "手スケール設定済（" + HAND_WIDTH_CM + "cm）";
+function enterHandMode() {
+  handMode = true;
+  handStableCount = 0;
+  document.getElementById("handGuide").style.display = "block";
+  document.getElementById("status").innerText = "手を枠に入れてください";
 }
 
 function getMedian(arr) {
@@ -148,13 +157,38 @@ function getMedian(arr) {
 async function loop() {
   if (video.readyState === 4) {
 
+    const width = detectWidth();
+
+    // ===== 手登録モード =====
+    if (handMode) {
+
+      if (width > 50) {
+        handStableCount++;
+      } else {
+        handStableCount = 0;
+      }
+
+      if (handStableCount > 10) {
+        scale = HAND_WIDTH_CM / width;
+        handMode = false;
+
+        document.getElementById("handGuide").style.display = "none";
+        document.getElementById("scaleInfo").innerText =
+          "手スケール設定済（" + HAND_WIDTH_CM + "cm）";
+
+        document.getElementById("status").innerText = "登録完了";
+      }
+
+      requestAnimationFrame(loop);
+      return;
+    }
+
+    // ===== 通常測定 =====
     const prediction = await model.predict(video);
     let best = prediction.sort((a,b)=>b.probability-a.probability)[0];
 
     document.getElementById("species").innerText =
       best.probability > 0.7 ? best.className : "該当なし";
-
-    const width = detectWidth();
 
     if (!scale || width === 0) {
       requestAnimationFrame(loop);
@@ -176,7 +210,7 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
-// 同じ検出ロジック
+// 検出ロジック
 function detectWidth() {
   if (!video.videoWidth) return 0;
 
@@ -203,32 +237,26 @@ function detectWidth() {
   let right = centerX;
 
   for (let x = centerX; x > centerX - scanHalfWidth; x--) {
-    let diffSum = 0;
-
+    let diff = 0;
     for (let dy = -scanHeight/2; dy < scanHeight/2; dy += 2) {
       const y = centerY + dy;
       const i = (y * w + x) * 4;
       const i2 = (y * w + (x-3)) * 4;
-
-      diffSum += Math.abs(img.data[i] - img.data[i2]);
+      diff += Math.abs(img.data[i] - img.data[i2]);
     }
-
-    if (diffSum > 80) break;
+    if (diff > 80) break;
     left = x;
   }
 
   for (let x = centerX; x < centerX + scanHalfWidth; x++) {
-    let diffSum = 0;
-
+    let diff = 0;
     for (let dy = -scanHeight/2; dy < scanHeight/2; dy += 2) {
       const y = centerY + dy;
       const i = (y * w + x) * 4;
       const i2 = (y * w + (x+3)) * 4;
-
-      diffSum += Math.abs(img.data[i] - img.data[i2]);
+      diff += Math.abs(img.data[i] - img.data[i2]);
     }
-
-    if (diffSum > 80) break;
+    if (diff > 80) break;
     right = x;
   }
 
