@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v6.2</title>
+<title>樹種＋直径測定 v6.3</title>
 
 <style>
 body {
@@ -59,7 +59,7 @@ button {
   border: 3px solid yellow;
 }
 
-/* 手ガイド（横長） */
+/* 手ガイド */
 #handGuide {
   position: absolute;
   top: 40%;
@@ -97,7 +97,7 @@ button {
 
 <body>
 
-<div id="version">v6.2 UX完成版</div>
+<div id="version">v6.3 手登録安定版</div>
 
 <div id="instruction">② 手のひらを横向きにして枠に入れてください</div>
 
@@ -158,7 +158,7 @@ function enterHandMode() {
   handMode = true;
   stableCount = 0;
   document.getElementById("handGuide").style.display = "block";
-  document.getElementById("status").innerText = "手を横にしてください";
+  document.getElementById("status").innerText = "手を枠に入れてください";
 }
 
 function getMedian(arr) {
@@ -169,22 +169,31 @@ function getMedian(arr) {
 async function loop() {
   if (video.readyState === 4) {
 
-    const { width, height } = detectWidthWithHeight();
+    const { width, height } = detectWH();
 
     // ===== 手登録モード =====
     if (handMode) {
 
       let guide = document.getElementById("handGuide");
 
-      // 縦判定
+      // 未検出（ここが今回の肝）
+      if (width === 0) {
+        guide.classList.remove("ok","ng");
+        document.getElementById("status").innerText = "手を枠に入れてください";
+        stableCount = 0;
+        requestAnimationFrame(loop);
+        return;
+      }
+
+      // 縦向き
       if (height > width) {
         guide.classList.remove("ok");
         guide.classList.add("ng");
-        document.getElementById("status").innerText = "手を横にしてください";
+        document.getElementById("status").innerText = "横向きにしてください";
         stableCount = 0;
       }
       // 小さい
-      else if (width < 50) {
+      else if (width < 60) {
         guide.classList.remove("ok");
         guide.classList.add("ng");
         document.getElementById("status").innerText = "手を近づけてください";
@@ -242,8 +251,8 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
-// 幅＋高さ取得
-function detectWidthWithHeight() {
+// 幅＋高さ取得（安定版）
+function detectWH() {
   if (!video.videoWidth) return { width:0, height:0 };
 
   const canvas = document.createElement("canvas");
@@ -259,37 +268,37 @@ function detectWidthWithHeight() {
   const w = canvas.width;
   const h = canvas.height;
 
-  const cx = Math.floor(w / 2);
-  const cy = Math.floor(h / 2);
+  const cx = Math.floor(w/2);
+  const cy = Math.floor(h/2);
 
-  let left = cx, right = cx, top = cy, bottom = cy;
+  let left=cx, right=cx, top=cy, bottom=cy;
 
-  // 横
-  for (let x = cx; x > cx - 200; x--) {
+  for (let x=cx; x>cx-200; x--) {
     if (Math.abs(img.data[(cy*w+x)*4] - img.data[(cy*w+x-3)*4]) > 80) break;
     left = x;
   }
 
-  for (let x = cx; x < cx + 200; x++) {
+  for (let x=cx; x<cx+200; x++) {
     if (Math.abs(img.data[(cy*w+x)*4] - img.data[(cy*w+x+3)*4]) > 80) break;
     right = x;
   }
 
-  // 縦
-  for (let y = cy; y > cy - 200; y--) {
+  for (let y=cy; y>cy-200; y--) {
     if (Math.abs(img.data[(y*w+cx)*4] - img.data[((y-3)*w+cx)*4]) > 80) break;
     top = y;
   }
 
-  for (let y = cy; y < cy + 200; y++) {
+  for (let y=cy; y<cy+200; y++) {
     if (Math.abs(img.data[(y*w+cx)*4] - img.data[((y+3)*w+cx)*4]) > 80) break;
     bottom = y;
   }
 
-  return {
-    width: right - left,
-    height: bottom - top
-  };
+  let width = right - left;
+  let height = bottom - top;
+
+  if (width < 30) return { width:0, height:0 };
+
+  return { width, height };
 }
 </script>
 
