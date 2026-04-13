@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v6.4</title>
+<title>樹種＋直径測定 v7.0</title>
 
 <style>
 body {
@@ -13,13 +13,13 @@ body {
   margin: 0;
 }
 
-#version { font-size: 16px; color: gray; margin: 5px; }
+#version { font-size: 18px; color: gray; margin: 5px; }
 
 button {
   width: 90%;
   max-width: 500px;
-  font-size: 28px;
-  padding: 18px;
+  font-size: 30px;
+  padding: 20px;
   margin: 10px auto;
   border-radius: 15px;
   display: block;
@@ -35,18 +35,7 @@ button {
 
 #webcam {
   width: 95vw;
-  max-width: 600px;
-}
-
-/* 中央線 */
-#line {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 4px;
-  height: 100%;
-  background: red;
-  transform: translateX(-50%);
+  max-width: 650px;
 }
 
 /* 幹ガイド */
@@ -56,7 +45,7 @@ button {
   left: 35%;
   width: 30%;
   height: 20%;
-  border: 3px solid yellow;
+  border: 4px solid yellow;
 }
 
 /* 手ガイド */
@@ -80,14 +69,15 @@ button {
   border-radius: 10px;
 }
 
-#species { font-size: 50px; color: cyan; }
-#result { font-size: 70px; }
-#sub { font-size: 30px; color: gray; }
-#status { font-size: 32px; }
-#scaleInfo { font-size: 22px; color: yellow; }
+#species { font-size: 55px; color: cyan; }
+#result { font-size: 80px; }
+#sub { font-size: 35px; color: gray; }
+#status { font-size: 35px; }
+#scaleInfo { font-size: 25px; color: yellow; }
+#distanceInfo { font-size: 25px; color: orange; }
 
 #instruction {
-  font-size: 22px;
+  font-size: 24px;
   margin: 10px;
   color: orange;
 }
@@ -96,16 +86,17 @@ button {
 
 <body>
 
-<div id="version">v6.4 手登録安定版</div>
+<div id="version">v7.0 完全版</div>
 
-<div id="instruction">② 手のひらを横向きにして枠に入れてください</div>
+<div id="instruction">
+①開始 → ②手登録（横向き） → ③同じ距離で測定
+</div>
 
 <button id="startBtn">① ▶開始</button>
 <button id="handBtn">② ✋手を登録</button>
 
 <div id="videoWrapper">
   <video id="webcam" playsinline></video>
-  <div id="line"></div>
   <div id="guideBox"></div>
   <div id="handGuide"></div>
 </div>
@@ -113,9 +104,10 @@ button {
 <div class="box">
   <div id="species">---</div>
   <div id="result">-- cm</div>
-  <div id="status">待機中</div>
   <div id="sub">暫定：-- cm</div>
+  <div id="status">待機中</div>
   <div id="scaleInfo">手スケール未登録</div>
+  <div id="distanceInfo"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
@@ -126,7 +118,10 @@ const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
 let model, video;
 let scale = null;
+let baseWidth = null;
+
 let diameterHistory = [];
+let widthHistory = [];
 
 let handMode = false;
 let stableCount = 0;
@@ -156,6 +151,7 @@ async function init() {
 function enterHandMode() {
   handMode = true;
   stableCount = 0;
+  widthHistory = [];
   document.getElementById("handGuide").style.display = "block";
   document.getElementById("status").innerText = "手を枠に入れてください";
 }
@@ -170,32 +166,26 @@ async function loop() {
 
     const { width, height } = detectWH();
 
-    // ===== 手登録モード =====
+    // ===== 手登録 =====
     if (handMode) {
 
       let guide = document.getElementById("handGuide");
 
-      // 未検出
-      if (width === 0 || height === 0) {
-        guide.classList.remove("ok","ng");
+      if (width === 0) {
         document.getElementById("status").innerText = "手を枠に入れてください";
         stableCount = 0;
         requestAnimationFrame(loop);
         return;
       }
 
-      // 小さすぎ（ノイズ排除）
       if (width < 80) {
-        guide.classList.remove("ok","ng");
         document.getElementById("status").innerText = "手を近づけてください";
         stableCount = 0;
         requestAnimationFrame(loop);
         return;
       }
 
-      // 縦向き
       if (height > width * 0.8) {
-        guide.classList.remove("ok");
         guide.classList.add("ng");
         document.getElementById("status").innerText = "横向きにしてください";
         stableCount = 0;
@@ -203,22 +193,31 @@ async function loop() {
         return;
       }
 
-      // OK
-      guide.classList.remove("ng");
-      guide.classList.add("ok");
-      document.getElementById("status").innerText = "OK（そのまま維持）";
+      // 安定判定
+      widthHistory.push(width);
+      if (widthHistory.length > 10) widthHistory.shift();
 
-      stableCount++;
+      let max = Math.max(...widthHistory);
+      let min = Math.min(...widthHistory);
 
-      if (stableCount > 20) {
-        scale = HAND_WIDTH_CM / width;
+      if (max - min < 10) {
+        guide.classList.remove("ng");
+        guide.classList.add("ok");
+        document.getElementById("status").innerText = "OK（固定してください）";
+        stableCount++;
+      } else {
+        guide.classList.add("ng");
+        document.getElementById("status").innerText = "手を動かさないでください";
+        stableCount = 0;
+      }
+
+      if (stableCount > 15) {
+        scale = HAND_WIDTH_CM / getMedian(widthHistory);
+        baseWidth = getMedian(widthHistory);
         handMode = false;
 
         guide.style.display = "none";
-
-        document.getElementById("scaleInfo").innerText =
-          "手スケール設定済（" + HAND_WIDTH_CM + "cm）";
-
+        document.getElementById("scaleInfo").innerText = "スケール設定済";
         document.getElementById("status").innerText = "登録完了";
       }
 
@@ -226,7 +225,21 @@ async function loop() {
       return;
     }
 
-    // ===== 通常測定 =====
+    // ===== 距離チェック =====
+    if (scale && width > 0) {
+      let diff = Math.abs(width - baseWidth);
+
+      if (diff > baseWidth * 0.2) {
+        document.getElementById("distanceInfo").innerText = "距離が違います";
+        document.getElementById("status").innerText = "距離を合わせてください";
+        requestAnimationFrame(loop);
+        return;
+      } else {
+        document.getElementById("distanceInfo").innerText = "距離OK";
+      }
+    }
+
+    // ===== 樹種 =====
     const prediction = await model.predict(video);
     let best = prediction.sort((a,b)=>b.probability-a.probability)[0];
 
@@ -253,7 +266,6 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
-// 幅高さ取得（ノイズ対策済）
 function detectWH() {
   if (!video.videoWidth) return { width:0, height:0 };
 
@@ -298,7 +310,6 @@ function detectWH() {
   let width = right - left;
   let height = bottom - top;
 
-  // ノイズ除去
   if (width < 50 || height < 50) return { width:0, height:0 };
 
   return { width, height };
