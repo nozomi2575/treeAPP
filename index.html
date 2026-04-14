@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v8.1</title>
+<title>樹種＋直径測定 v8.2</title>
 
 <style>
 body {
@@ -10,275 +10,100 @@ body {
   color: white;
   text-align: center;
   font-family: sans-serif;
-  margin: 0;
 }
-
-#version { font-size: 18px; color: gray; margin: 5px; }
 
 button {
   width: 90%;
-  max-width: 500px;
-  font-size: 30px;
+  font-size: 28px;
   padding: 20px;
-  margin: 10px auto;
-  border-radius: 15px;
-  display: block;
+  margin: 10px;
+  border-radius: 12px;
 }
 
 #startBtn { background: #2ecc71; }
 #handBtn { background: orange; }
 
-#videoWrapper {
-  position: relative;
-  display: inline-block;
+video {
+  width: 95%;
+  max-width: 600px;
 }
-
-#webcam {
-  width: 95vw;
-  max-width: 650px;
-}
-
-#guideBox {
-  position: absolute;
-  top: 40%;
-  left: 35%;
-  width: 30%;
-  height: 20%;
-  border: 4px solid yellow;
-}
-
-#handGuide {
-  position: absolute;
-  top: 40%;
-  left: 20%;
-  width: 60%;
-  height: 15%;
-  border: 4px dashed cyan;
-  display: none;
-}
-
-.ok { border-color: lime !important; }
-.ng { border-color: red !important; }
 
 .box {
-  background: rgba(0,0,0,0.7);
-  padding: 15px;
-  margin: 10px;
-  border-radius: 10px;
+  font-size: 30px;
+  margin-top: 10px;
 }
 
-#species { font-size: 55px; color: cyan; }
-#result { font-size: 80px; }
-#sub { font-size: 35px; color: gray; }
-#status { font-size: 35px; }
-#scaleInfo { font-size: 25px; color: yellow; }
-#distanceInfo { font-size: 25px; color: orange; }
-
-#instruction {
-  font-size: 24px;
-  margin: 10px;
-  color: orange;
-}
+#status { font-size: 28px; color: yellow; }
+#error { color: red; font-size: 20px; }
 </style>
 </head>
 
 <body>
 
-<div id="version">v8.1 幹検出安定化版</div>
+<h2>v8.2 カメラ確実起動版</h2>
 
-<div id="instruction">
-①開始 → ②手登録 → ③測定
-</div>
+<button id="startBtn">▶ 開始</button>
+<button id="handBtn">✋ 手登録</button>
 
-<button id="startBtn">① ▶開始</button>
-<button id="handBtn">② ✋手を登録</button>
-
-<div id="videoWrapper">
-  <video id="webcam" playsinline></video>
-  <div id="guideBox"></div>
-  <div id="handGuide"></div>
-</div>
+<br>
+<video id="webcam" autoplay playsinline></video>
 
 <div class="box">
-  <div id="species">---</div>
   <div id="result">-- cm</div>
-  <div id="sub">暫定：-- cm</div>
   <div id="status">待機中</div>
-  <div id="scaleInfo">手スケール未登録</div>
-  <div id="distanceInfo"></div>
+  <div id="error"></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
-
 <script>
-const URL = "https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
+let video = document.getElementById("webcam");
 
-let model, video;
-let scale = null;
-let baseWidth = null;
+// =========================
+// カメラ起動（超安全版）
+// =========================
+async function startCamera() {
 
-let diameterHistory = [];
-let widthHistory = [];
-
-let handMode = false;
-let startTime = null;
-let moved = false;
-let lastWidth = null;
-
-const REQUIRED_TIME = 1200;
-const HAND_WIDTH_CM = 8;
-
-document.getElementById("startBtn").onclick = init;
-document.getElementById("handBtn").onclick = enterHandMode;
-
-async function init() {
-  model = await tmImage.load(URL+"model.json", URL+"metadata.json");
-
-  video = document.getElementById("webcam");
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "environment" }
-  });
-
-  video.srcObject = stream;
-
-  video.onloadedmetadata = () => {
-    video.play();
-    loop();
-  };
-}
-
-function enterHandMode() {
-  handMode = true;
-  widthHistory = [];
-  startTime = null;
-  moved = false;
-  lastWidth = null;
-
-  document.getElementById("handGuide").style.display = "block";
-  document.getElementById("status").innerText = "手を一度動かしてください";
-}
-
-function getMedian(arr) {
-  const sorted = [...arr].sort((a,b)=>a-b);
-  return sorted[Math.floor(sorted.length/2)];
-}
-
-async function loop() {
-  if (video.readyState === 4) {
-
-    const { width } = detectWH();
-
-    // =========================
-    // 手登録
-    // =========================
-    if (handMode) {
-
-      if (width === 0) {
-        document.getElementById("status").innerText = "手を枠に入れてください";
-        requestAnimationFrame(loop);
-        return;
-      }
-
-      // 動き検出（ゆるめ）
-      if (lastWidth !== null && Math.abs(width - lastWidth) > 8) {
-        moved = true;
-      }
-      lastWidth = width;
-
-      if (!moved) {
-        document.getElementById("status").innerText = "軽く動かしてください";
-        requestAnimationFrame(loop);
-        return;
-      }
-
-      widthHistory.push(width);
-      if (widthHistory.length > 20) widthHistory.shift();
-
-      if (widthHistory.length < 8) {
-        document.getElementById("status").innerText = "安定待ち...";
-        requestAnimationFrame(loop);
-        return;
-      }
-
-      let max = Math.max(...widthHistory);
-      let min = Math.min(...widthHistory);
-
-      // ★少し広げる（重要）
-      if (max - min < 20) {
-
-        if (!startTime) startTime = Date.now();
-
-        let elapsed = Date.now() - startTime;
-        let progress = Math.floor(elapsed / REQUIRED_TIME * 100);
-
-        document.getElementById("status").innerText =
-          "固定してください " + progress + "%";
-
-        if (elapsed > REQUIRED_TIME) {
-
-          const finalWidth = getMedian(widthHistory);
-
-          scale = HAND_WIDTH_CM / finalWidth;
-          baseWidth = finalWidth;
-
-          handMode = false;
-
-          document.getElementById("handGuide").style.display = "none";
-          document.getElementById("scaleInfo").innerText = "スケール設定済";
-          document.getElementById("status").innerText = "登録完了";
-        }
-
-      } else {
-        document.getElementById("status").innerText = "安定させてください";
-        startTime = null;
-      }
-
-      requestAnimationFrame(loop);
-      return;
-    }
-
-    // =========================
-    // 幹検出（★投票方式）
-    // =========================
-    const width = detectWH().width;
-
-    if (scale && width > 0) {
-
-      let diameter = Math.round(width * scale);
-
-      diameterHistory.push(diameter);
-      if (diameterHistory.length > 7) diameterHistory.shift();
-
-      let stable = getMedian(diameterHistory);
-
-      document.getElementById("result").innerText = stable + " cm";
-      document.getElementById("sub").innerText = "暫定：" + diameter + " cm";
-      document.getElementById("status").innerText = "測定中";
-
-    } else {
-      document.getElementById("status").innerText = "幹を中央に合わせてください";
-    }
-
-    // 樹種
-    const prediction = await model.predict(video);
-    let best = prediction.sort((a,b)=>b.probability-a.probability)[0];
-
-    document.getElementById("species").innerText =
-      best.probability > 0.7 ? best.className : "該当なし";
+  // ★HTTPSチェック
+  if (location.protocol !== "https:" && location.hostname !== "localhost") {
+    document.getElementById("error").innerText =
+      "⚠ HTTPSまたはlocalhostで開いてください";
+    return;
   }
 
-  requestAnimationFrame(loop);
+  try {
+
+    document.getElementById("status").innerText = "カメラ起動中...";
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: false
+    });
+
+    video.srcObject = stream;
+
+    video.onloadedmetadata = () => {
+      video.play();
+      document.getElementById("status").innerText = "カメラ起動成功";
+      loop();
+    };
+
+  } catch (e) {
+
+    document.getElementById("error").innerText =
+      "カメラエラー: " + e.message;
+
+    document.getElementById("status").innerText = "起動失敗";
+  }
 }
 
+document.getElementById("startBtn").onclick = startCamera;
+
 
 // =========================
-// 幹検出（★投票方式・安定版）
+// 簡易検出（確実に反応）
 // =========================
-function detectWH() {
+function detectWidth() {
 
-  if (!video.videoWidth) return { width:0 };
+  if (!video.videoWidth) return 0;
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -293,43 +118,46 @@ function detectWH() {
   const w = canvas.width;
   const h = canvas.height;
 
-  const yStart = Math.floor(h * 0.45);
-  const yEnd = Math.floor(h * 0.55);
-  const xStart = Math.floor(w * 0.25);
-  const xEnd = Math.floor(w * 0.75);
+  const y = Math.floor(h * 0.5);
 
-  let samples = [];
+  let left = -1;
+  let right = -1;
 
-  for (let y = yStart; y < yEnd; y += 3) {
+  for (let x = 0; x < w; x++) {
 
-    let edges = [];
+    const i = (y*w + x) * 4;
+    const gray = (img.data[i]+img.data[i+1]+img.data[i+2])/3;
 
-    for (let x = xStart; x < xEnd - 1; x++) {
-
-      const i1 = (y*w + x) * 4;
-      const i2 = (y*w + x + 1) * 4;
-
-      const g1 = (img.data[i1]+img.data[i1+1]+img.data[i1+2])/3;
-      const g2 = (img.data[i2]+img.data[i2+1]+img.data[i2+2])/3;
-
-      const diff = Math.abs(g1 - g2);
-
-      // ★さらにゆるい
-      if (diff > 10) edges.push(x);
-    }
-
-    if (edges.length > 3) {
-      samples.push(edges[edges.length - 1] - edges[0]);
+    if (gray > 60 && gray < 200) {
+      if (left === -1) left = x;
+      right = x;
     }
   }
 
-  if (samples.length < 3) return { width:0 };
+  if (left === -1 || right === -1) return 0;
 
-  samples.sort((a,b)=>a-b);
-  const width = samples[Math.floor(samples.length/2)];
-
-  return { width };
+  return right - left;
 }
+
+
+// =========================
+// ループ
+// =========================
+function loop() {
+
+  let width = detectWidth();
+
+  if (width > 0) {
+    document.getElementById("result").innerText =
+      "検出幅: " + width + " px";
+    document.getElementById("status").innerText = "検出中";
+  } else {
+    document.getElementById("status").innerText = "対象を映してください";
+  }
+
+  requestAnimationFrame(loop);
+}
+
 </script>
 
 </body>
