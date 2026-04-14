@@ -2,161 +2,261 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v8.2</title>
+<title>樹種＋直径測定 v9.0</title>
 
 <style>
 body {
-  background: black;
-  color: white;
-  text-align: center;
-  font-family: sans-serif;
+  background:black;
+  color:white;
+  text-align:center;
+  font-family:sans-serif;
 }
 
-button {
-  width: 90%;
-  font-size: 28px;
-  padding: 20px;
-  margin: 10px;
-  border-radius: 12px;
+button{
+  width:90%;
+  font-size:28px;
+  padding:20px;
+  margin:10px;
+  border-radius:12px;
 }
 
-#startBtn { background: #2ecc71; }
-#handBtn { background: orange; }
+#startBtn{background:#2ecc71;}
+#handBtn{background:orange;}
 
-video {
-  width: 95%;
-  max-width: 600px;
+video{
+  width:95%;
+  max-width:650px;
 }
 
-.box {
-  font-size: 30px;
-  margin-top: 10px;
-}
-
-#status { font-size: 28px; color: yellow; }
-#error { color: red; font-size: 20px; }
+.box{margin-top:10px;}
+#species{font-size:50px;color:cyan;}
+#result{font-size:80px;}
+#sub{font-size:35px;color:gray;}
+#status{font-size:30px;color:yellow;}
+#error{color:red;}
 </style>
 </head>
 
 <body>
 
-<h2>v8.2 カメラ確実起動版</h2>
+<h2>v9.0 完全版</h2>
 
-<button id="startBtn">▶ 開始</button>
-<button id="handBtn">✋ 手登録</button>
+<button id="startBtn">①開始</button>
+<button id="handBtn">②手登録</button>
 
-<br>
 <video id="webcam" autoplay playsinline></video>
 
 <div class="box">
-  <div id="result">-- cm</div>
-  <div id="status">待機中</div>
-  <div id="error"></div>
+<div id="species">---</div>
+<div id="result">-- cm</div>
+<div id="sub">暫定：--</div>
+<div id="status">待機中</div>
+<div id="error"></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image"></script>
+
 <script>
-let video = document.getElementById("webcam");
+const URL="https://teachablemachine.withgoogle.com/models/vcoNkn6Is/";
 
-// =========================
-// カメラ起動（超安全版）
-// =========================
-async function startCamera() {
+let video=document.getElementById("webcam");
+let model;
 
-  // ★HTTPSチェック
-  if (location.protocol !== "https:" && location.hostname !== "localhost") {
-    document.getElementById("error").innerText =
-      "⚠ HTTPSまたはlocalhostで開いてください";
+let scale=null;
+let baseWidth=null;
+
+let handMode=false;
+let moved=false;
+let lastWidth=null;
+let startTime=null;
+
+let widthHistory=[];
+let diameterHistory=[];
+
+const HAND_CM=8;
+const HOLD_TIME=1200;
+
+// =================
+// カメラ起動
+// =================
+async function start(){
+
+if(location.protocol!=="https:" && location.hostname!=="localhost"){
+  error("HTTPSで開いてください");
+  return;
+}
+
+try{
+  status("カメラ起動中");
+
+  const stream=await navigator.mediaDevices.getUserMedia({video:true});
+  video.srcObject=stream;
+
+  video.onloadedmetadata=async()=>{
+    video.play();
+    model=await tmImage.load(URL+"model.json",URL+"metadata.json");
+    status("起動成功");
+    loop();
+  };
+
+}catch(e){
+  error(e.message);
+}
+}
+
+// =================
+// 手登録
+// =================
+function hand(){
+  handMode=true;
+  moved=false;
+  lastWidth=null;
+  startTime=null;
+  widthHistory=[];
+  status("手を動かしてください");
+}
+
+// =================
+// メインループ
+// =================
+async function loop(){
+
+let w=detect();
+
+if(handMode){
+
+  if(w===0){
+    status("手を映してください");
+    requestAnimationFrame(loop);
     return;
   }
 
-  try {
-
-    document.getElementById("status").innerText = "カメラ起動中...";
-
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: false
-    });
-
-    video.srcObject = stream;
-
-    video.onloadedmetadata = () => {
-      video.play();
-      document.getElementById("status").innerText = "カメラ起動成功";
-      loop();
-    };
-
-  } catch (e) {
-
-    document.getElementById("error").innerText =
-      "カメラエラー: " + e.message;
-
-    document.getElementById("status").innerText = "起動失敗";
+  if(lastWidth && Math.abs(w-lastWidth)>8){
+    moved=true;
   }
-}
+  lastWidth=w;
 
-document.getElementById("startBtn").onclick = startCamera;
+  if(!moved){
+    status("一度動かす");
+    requestAnimationFrame(loop);
+    return;
+  }
 
+  widthHistory.push(w);
+  if(widthHistory.length>15)widthHistory.shift();
 
-// =========================
-// 簡易検出（確実に反応）
-// =========================
-function detectWidth() {
+  let max=Math.max(...widthHistory);
+  let min=Math.min(...widthHistory);
 
-  if (!video.videoWidth) return 0;
+  if(max-min<20){
 
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
+    if(!startTime)startTime=Date.now();
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+    let t=Date.now()-startTime;
+    status("固定 "+Math.floor(t/HOLD_TIME*100)+"%");
 
-  ctx.drawImage(video, 0, 0);
-
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  const w = canvas.width;
-  const h = canvas.height;
-
-  const y = Math.floor(h * 0.5);
-
-  let left = -1;
-  let right = -1;
-
-  for (let x = 0; x < w; x++) {
-
-    const i = (y*w + x) * 4;
-    const gray = (img.data[i]+img.data[i+1]+img.data[i+2])/3;
-
-    if (gray > 60 && gray < 200) {
-      if (left === -1) left = x;
-      right = x;
+    if(t>HOLD_TIME){
+      let m=median(widthHistory);
+      scale=HAND_CM/m;
+      baseWidth=m;
+      handMode=false;
+      status("登録完了");
     }
-  }
 
-  if (left === -1 || right === -1) return 0;
-
-  return right - left;
-}
-
-
-// =========================
-// ループ
-// =========================
-function loop() {
-
-  let width = detectWidth();
-
-  if (width > 0) {
-    document.getElementById("result").innerText =
-      "検出幅: " + width + " px";
-    document.getElementById("status").innerText = "検出中";
-  } else {
-    document.getElementById("status").innerText = "対象を映してください";
+  }else{
+    startTime=null;
+    status("動かさない");
   }
 
   requestAnimationFrame(loop);
+  return;
 }
+
+// =================
+// 幹測定
+// =================
+if(scale && w>0){
+
+  let d=Math.round(w*scale);
+
+  diameterHistory.push(d);
+  if(diameterHistory.length>5)diameterHistory.shift();
+
+  let stable=median(diameterHistory);
+
+  document.getElementById("result").innerText=stable+" cm";
+  document.getElementById("sub").innerText="暫定："+d+" cm";
+
+}else{
+  status("幹を映してください");
+}
+
+// =================
+// 樹種
+// =================
+if(model){
+let p=await model.predict(video);
+let best=p.sort((a,b)=>b.probability-a.probability)[0];
+document.getElementById("species").innerText=
+best.probability>0.7?best.className:"不明";
+}
+
+requestAnimationFrame(loop);
+}
+
+// =================
+// 幅検出（改良版）
+// =================
+function detect(){
+
+if(!video.videoWidth)return 0;
+
+let c=document.createElement("canvas");
+let ctx=c.getContext("2d");
+
+c.width=video.videoWidth;
+c.height=video.videoHeight;
+
+ctx.drawImage(video,0,0);
+
+let img=ctx.getImageData(0,0,c.width,c.height);
+
+let w=c.width,h=c.height;
+
+let y=Math.floor(h*0.5);
+
+let edges=[];
+
+for(let x=0;x<w-1;x++){
+
+let i1=(y*w+x)*4;
+let i2=(y*w+x+1)*4;
+
+let g1=(img.data[i1]+img.data[i1+1]+img.data[i1+2])/3;
+let g2=(img.data[i2]+img.data[i2+1]+img.data[i2+2])/3;
+
+if(Math.abs(g1-g2)>10)edges.push(x);
+}
+
+if(edges.length<2)return 0;
+
+return edges[edges.length-1]-edges[0];
+}
+
+// =================
+// utils
+// =================
+function median(a){
+let s=[...a].sort((x,y)=>x-y);
+return s[Math.floor(s.length/2)];
+}
+
+function status(t){document.getElementById("status").innerText=t;}
+function error(t){document.getElementById("error").innerText=t;}
+
+document.getElementById("startBtn").onclick=start;
+document.getElementById("handBtn").onclick=hand;
 
 </script>
 
