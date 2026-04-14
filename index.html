@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v9.0</title>
+<title>樹種＋直径測定 v9.1</title>
 
 <style>
 body {
@@ -14,7 +14,7 @@ body {
 
 button{
   width:90%;
-  font-size:28px;
+  font-size:30px;
   padding:20px;
   margin:10px;
   border-radius:12px;
@@ -29,7 +29,7 @@ video{
 }
 
 .box{margin-top:10px;}
-#species{font-size:50px;color:cyan;}
+#species{font-size:55px;color:cyan;}
 #result{font-size:80px;}
 #sub{font-size:35px;color:gray;}
 #status{font-size:30px;color:yellow;}
@@ -39,10 +39,10 @@ video{
 
 <body>
 
-<h2>v9.0 完全版</h2>
+<h2>v9.1 安定統合版</h2>
 
 <button id="startBtn">①開始</button>
-<button id="handBtn">②手登録</button>
+<button id="handBtn">②手を登録</button>
 
 <video id="webcam" autoplay playsinline></video>
 
@@ -78,19 +78,23 @@ const HAND_CM=8;
 const HOLD_TIME=1200;
 
 // =================
-// カメラ起動
+// カメラ起動（★修正ポイント）
 // =================
 async function start(){
 
 if(location.protocol!=="https:" && location.hostname!=="localhost"){
-  error("HTTPSで開いてください");
+  error("HTTPSまたはlocalhostで開いてください");
   return;
 }
 
 try{
   status("カメラ起動中");
 
-  const stream=await navigator.mediaDevices.getUserMedia({video:true});
+  const stream=await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:"environment" }, // ★ここだけ重要
+    audio:false
+  });
+
   video.srcObject=stream;
 
   video.onloadedmetadata=async()=>{
@@ -106,7 +110,7 @@ try{
 }
 
 // =================
-// 手登録
+// 手登録（安定版）
 // =================
 function hand(){
   handMode=true;
@@ -114,7 +118,7 @@ function hand(){
   lastWidth=null;
   startTime=null;
   widthHistory=[];
-  status("手を動かしてください");
+  status("手を一度動かしてください");
 }
 
 // =================
@@ -132,19 +136,20 @@ if(handMode){
     return;
   }
 
-  if(lastWidth && Math.abs(w-lastWidth)>8){
+  // 動き検出（ゆるめ）
+  if(lastWidth && Math.abs(w-lastWidth)>5){
     moved=true;
   }
   lastWidth=w;
 
   if(!moved){
-    status("一度動かす");
+    status("一度動かしてください");
     requestAnimationFrame(loop);
     return;
   }
 
   widthHistory.push(w);
-  if(widthHistory.length>15)widthHistory.shift();
+  if(widthHistory.length>20)widthHistory.shift();
 
   let max=Math.max(...widthHistory);
   let min=Math.min(...widthHistory);
@@ -166,7 +171,7 @@ if(handMode){
 
   }else{
     startTime=null;
-    status("動かさない");
+    status("少し安定させてください");
   }
 
   requestAnimationFrame(loop);
@@ -181,19 +186,20 @@ if(scale && w>0){
   let d=Math.round(w*scale);
 
   diameterHistory.push(d);
-  if(diameterHistory.length>5)diameterHistory.shift();
+  if(diameterHistory.length>7)diameterHistory.shift();
 
   let stable=median(diameterHistory);
 
   document.getElementById("result").innerText=stable+" cm";
   document.getElementById("sub").innerText="暫定："+d+" cm";
+  status("測定中");
 
 }else{
-  status("幹を映してください");
+  status("幹を中央に映してください");
 }
 
 // =================
-// 樹種
+// 樹種判別
 // =================
 if(model){
 let p=await model.predict(video);
@@ -206,7 +212,7 @@ requestAnimationFrame(loop);
 }
 
 // =================
-// 幅検出（改良版）
+// 幅検出（安定版）
 // =================
 function detect(){
 
@@ -224,7 +230,13 @@ let img=ctx.getImageData(0,0,c.width,c.height);
 
 let w=c.width,h=c.height;
 
-let y=Math.floor(h*0.5);
+// ★中央帯だけ使う（安定）
+let y1=Math.floor(h*0.45);
+let y2=Math.floor(h*0.55);
+
+let samples=[];
+
+for(let y=y1;y<y2;y+=3){
 
 let edges=[];
 
@@ -236,12 +248,17 @@ let i2=(y*w+x+1)*4;
 let g1=(img.data[i1]+img.data[i1+1]+img.data[i1+2])/3;
 let g2=(img.data[i2]+img.data[i2+1]+img.data[i2+2])/3;
 
-if(Math.abs(g1-g2)>10)edges.push(x);
+if(Math.abs(g1-g2)>8)edges.push(x);
 }
 
-if(edges.length<2)return 0;
+if(edges.length>2){
+samples.push(edges[edges.length-1]-edges[0]);
+}
+}
 
-return edges[edges.length-1]-edges[0];
+if(samples.length<3)return 0;
+
+return median(samples);
 }
 
 // =================
