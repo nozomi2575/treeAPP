@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v8.0</title>
+<title>樹種＋直径測定 v8.1</title>
 
 <style>
 body {
@@ -84,10 +84,10 @@ button {
 
 <body>
 
-<div id="version">v8.0 手登録完全制御版</div>
+<div id="version">v8.1 幹検出安定化版</div>
 
 <div id="instruction">
-①開始 → ②手を一度動かす → ③固定して登録 → ④同距離で測定
+①開始 → ②手登録 → ③測定
 </div>
 
 <button id="startBtn">① ▶開始</button>
@@ -122,8 +122,6 @@ let diameterHistory = [];
 let widthHistory = [];
 
 let handMode = false;
-
-// ★制御用
 let startTime = null;
 let moved = false;
 let lastWidth = null;
@@ -153,14 +151,13 @@ async function init() {
 
 function enterHandMode() {
   handMode = true;
-
   widthHistory = [];
   startTime = null;
   moved = false;
   lastWidth = null;
 
   document.getElementById("handGuide").style.display = "block";
-  document.getElementById("status").innerText = "手を枠に入れてください";
+  document.getElementById("status").innerText = "手を一度動かしてください";
 }
 
 function getMedian(arr) {
@@ -171,54 +168,35 @@ function getMedian(arr) {
 async function loop() {
   if (video.readyState === 4) {
 
-    const { width, height } = detectWH();
+    const { width } = detectWH();
 
-    // ===== 手登録 =====
+    // =========================
+    // 手登録
+    // =========================
     if (handMode) {
-
-      let guide = document.getElementById("handGuide");
 
       if (width === 0) {
         document.getElementById("status").innerText = "手を枠に入れてください";
-        resetHand();
         requestAnimationFrame(loop);
         return;
       }
 
-      // ★動き検出
-      if (lastWidth !== null) {
-        if (Math.abs(width - lastWidth) > 10) {
-          moved = true;
-        }
+      // 動き検出（ゆるめ）
+      if (lastWidth !== null && Math.abs(width - lastWidth) > 8) {
+        moved = true;
       }
       lastWidth = width;
 
       if (!moved) {
-        document.getElementById("status").innerText = "一度手を動かしてください";
-        resetHand();
-        requestAnimationFrame(loop);
-        return;
-      }
-
-      if (width < 80) {
-        document.getElementById("status").innerText = "手を近づけてください";
-        resetHand();
-        requestAnimationFrame(loop);
-        return;
-      }
-
-      if (height > width * 0.8) {
-        guide.classList.add("ng");
-        document.getElementById("status").innerText = "横向きにしてください";
-        resetHand();
+        document.getElementById("status").innerText = "軽く動かしてください";
         requestAnimationFrame(loop);
         return;
       }
 
       widthHistory.push(width);
-      if (widthHistory.length > 15) widthHistory.shift();
+      if (widthHistory.length > 20) widthHistory.shift();
 
-      if (widthHistory.length < 10) {
+      if (widthHistory.length < 8) {
         document.getElementById("status").innerText = "安定待ち...";
         requestAnimationFrame(loop);
         return;
@@ -227,10 +205,8 @@ async function loop() {
       let max = Math.max(...widthHistory);
       let min = Math.min(...widthHistory);
 
-      if (max - min < 5) {
-
-        guide.classList.remove("ng");
-        guide.classList.add("ok");
+      // ★少し広げる（重要）
+      if (max - min < 20) {
 
         if (!startTime) startTime = Date.now();
 
@@ -249,16 +225,13 @@ async function loop() {
 
           handMode = false;
 
-          guide.style.display = "none";
-
+          document.getElementById("handGuide").style.display = "none";
           document.getElementById("scaleInfo").innerText = "スケール設定済";
           document.getElementById("status").innerText = "登録完了";
         }
 
       } else {
-
-        guide.classList.add("ng");
-        document.getElementById("status").innerText = "動かさないで";
+        document.getElementById("status").innerText = "安定させてください";
         startTime = null;
       }
 
@@ -266,56 +239,46 @@ async function loop() {
       return;
     }
 
-    // ===== 距離チェック =====
-    if (scale && width > 0) {
-      let diff = Math.abs(width - baseWidth);
+    // =========================
+    // 幹検出（★投票方式）
+    // =========================
+    const width = detectWH().width;
 
-      if (diff > baseWidth * 0.2) {
-        document.getElementById("distanceInfo").innerText = "距離NG";
-        document.getElementById("status").innerText = "距離を合わせてください";
-        requestAnimationFrame(loop);
-        return;
-      } else {
-        document.getElementById("distanceInfo").innerText = "距離OK";
-      }
+    if (scale && width > 0) {
+
+      let diameter = Math.round(width * scale);
+
+      diameterHistory.push(diameter);
+      if (diameterHistory.length > 7) diameterHistory.shift();
+
+      let stable = getMedian(diameterHistory);
+
+      document.getElementById("result").innerText = stable + " cm";
+      document.getElementById("sub").innerText = "暫定：" + diameter + " cm";
+      document.getElementById("status").innerText = "測定中";
+
+    } else {
+      document.getElementById("status").innerText = "幹を中央に合わせてください";
     }
 
-    // ===== 樹種 =====
+    // 樹種
     const prediction = await model.predict(video);
     let best = prediction.sort((a,b)=>b.probability-a.probability)[0];
 
     document.getElementById("species").innerText =
       best.probability > 0.7 ? best.className : "該当なし";
-
-    if (!scale || width === 0) {
-      requestAnimationFrame(loop);
-      return;
-    }
-
-    let diameter = Math.round(width * scale);
-
-    diameterHistory.push(diameter);
-    if (diameterHistory.length > 5) diameterHistory.shift();
-
-    let stable = getMedian(diameterHistory);
-
-    document.getElementById("result").innerText = stable + " cm";
-    document.getElementById("sub").innerText = "暫定：" + diameter + " cm";
-    document.getElementById("status").innerText = "測定中";
   }
 
   requestAnimationFrame(loop);
 }
 
-function resetHand() {
-  startTime = null;
-  widthHistory = [];
-}
 
-// ★幹検出（複数ライン）
+// =========================
+// 幹検出（★投票方式・安定版）
+// =========================
 function detectWH() {
 
-  if (!video.videoWidth) return { width:0, height:0 };
+  if (!video.videoWidth) return { width:0 };
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -330,40 +293,42 @@ function detectWH() {
   const w = canvas.width;
   const h = canvas.height;
 
-  const x1 = Math.floor(w * 0.35);
-  const x2 = Math.floor(w * 0.65);
-  const y1 = Math.floor(h * 0.40);
-  const y2 = Math.floor(h * 0.60);
+  const yStart = Math.floor(h * 0.45);
+  const yEnd = Math.floor(h * 0.55);
+  const xStart = Math.floor(w * 0.25);
+  const xEnd = Math.floor(w * 0.75);
 
-  let widths = [];
+  let samples = [];
 
-  for (let y = y1; y < y2; y += 5) {
+  for (let y = yStart; y < yEnd; y += 3) {
 
-    let left = -1;
-    let right = -1;
+    let edges = [];
 
-    for (let x = x1; x < x2; x++) {
+    for (let x = xStart; x < xEnd - 1; x++) {
 
-      const i = (y*w + x) * 4;
-      const gray = (img.data[i]+img.data[i+1]+img.data[i+2])/3;
+      const i1 = (y*w + x) * 4;
+      const i2 = (y*w + x + 1) * 4;
 
-      if (gray > 50 && gray < 200) {
-        if (left === -1) left = x;
-        right = x;
-      }
+      const g1 = (img.data[i1]+img.data[i1+1]+img.data[i1+2])/3;
+      const g2 = (img.data[i2]+img.data[i2+1]+img.data[i2+2])/3;
+
+      const diff = Math.abs(g1 - g2);
+
+      // ★さらにゆるい
+      if (diff > 10) edges.push(x);
     }
 
-    if (left !== -1 && right !== -1) {
-      widths.push(right - left);
+    if (edges.length > 3) {
+      samples.push(edges[edges.length - 1] - edges[0]);
     }
   }
 
-  if (widths.length < 5) return { width:0, height:0 };
+  if (samples.length < 3) return { width:0 };
 
-  widths.sort((a,b)=>a-b);
-  const width = widths[Math.floor(widths.length/2)];
+  samples.sort((a,b)=>a-b);
+  const width = samples[Math.floor(samples.length/2)];
 
-  return { width: width, height: 100 };
+  return { width };
 }
 </script>
 
