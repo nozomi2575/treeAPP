@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v7.6</title>
+<title>樹種＋直径測定 v7.7</title>
 
 <style>
 body {
@@ -84,10 +84,10 @@ button {
 
 <body>
 
-<div id="version">v7.6 手登録安定強化版</div>
+<div id="version">v7.7 手登録完全安定版</div>
 
 <div id="instruction">
-①開始 → ②手登録（横向き・1秒固定） → ③同じ距離で測定
+①開始 → ②手登録（横向き・1秒以上固定） → ③同じ距離で測定
 </div>
 
 <button id="startBtn">① ▶開始</button>
@@ -122,9 +122,13 @@ let diameterHistory = [];
 let widthHistory = [];
 
 let handMode = false;
-let stableFrames = 0;
 
-const REQUIRED_FRAMES = 30;
+// ★新ロジック
+let startTime = null;
+let warmupFrames = 0;
+
+const REQUIRED_TIME = 1200;
+const WARMUP = 10;
 const HAND_WIDTH_CM = 8;
 
 document.getElementById("startBtn").onclick = init;
@@ -149,8 +153,10 @@ async function init() {
 
 function enterHandMode() {
   handMode = true;
-  stableFrames = 0;
   widthHistory = [];
+  warmupFrames = 0;
+  startTime = null;
+
   document.getElementById("handGuide").style.display = "block";
   document.getElementById("status").innerText = "手を枠に入れてください";
 }
@@ -172,14 +178,14 @@ async function loop() {
 
       if (width === 0) {
         document.getElementById("status").innerText = "手を枠に入れてください";
-        stableFrames = 0;
+        resetHand();
         requestAnimationFrame(loop);
         return;
       }
 
       if (width < 80) {
         document.getElementById("status").innerText = "手を近づけてください";
-        stableFrames = 0;
+        resetHand();
         requestAnimationFrame(loop);
         return;
       }
@@ -187,13 +193,27 @@ async function loop() {
       if (height > width * 0.8) {
         guide.classList.add("ng");
         document.getElementById("status").innerText = "横向きにしてください";
-        stableFrames = 0;
+        resetHand();
+        requestAnimationFrame(loop);
+        return;
+      }
+
+      // ウォームアップ
+      warmupFrames++;
+      if (warmupFrames < WARMUP) {
+        document.getElementById("status").innerText = "準備中...";
         requestAnimationFrame(loop);
         return;
       }
 
       widthHistory.push(width);
       if (widthHistory.length > 15) widthHistory.shift();
+
+      if (widthHistory.length < 10) {
+        document.getElementById("status").innerText = "安定待ち...";
+        requestAnimationFrame(loop);
+        return;
+      }
 
       let max = Math.max(...widthHistory);
       let min = Math.min(...widthHistory);
@@ -203,34 +223,34 @@ async function loop() {
         guide.classList.remove("ng");
         guide.classList.add("ok");
 
-        stableFrames++;
+        if (!startTime) startTime = Date.now();
 
-        let progress = Math.floor(stableFrames / REQUIRED_FRAMES * 100);
+        let elapsed = Date.now() - startTime;
+        let progress = Math.floor(elapsed / REQUIRED_TIME * 100);
 
         document.getElementById("status").innerText =
           "固定してください " + progress + "%";
+
+        if (elapsed > REQUIRED_TIME) {
+
+          const finalWidth = getMedian(widthHistory);
+
+          scale = HAND_WIDTH_CM / finalWidth;
+          baseWidth = finalWidth;
+
+          handMode = false;
+
+          guide.style.display = "none";
+
+          document.getElementById("scaleInfo").innerText = "スケール設定済";
+          document.getElementById("status").innerText = "登録完了";
+        }
 
       } else {
 
         guide.classList.add("ng");
         document.getElementById("status").innerText = "動かさないで";
-        stableFrames = 0;
-      }
-
-      if (stableFrames > REQUIRED_FRAMES) {
-
-        const finalWidth = getMedian(widthHistory);
-
-        scale = HAND_WIDTH_CM / finalWidth;
-        baseWidth = finalWidth;
-
-        handMode = false;
-        stableFrames = 0;
-
-        guide.style.display = "none";
-
-        document.getElementById("scaleInfo").innerText = "スケール設定済";
-        document.getElementById("status").innerText = "登録完了";
+        startTime = null;
       }
 
       requestAnimationFrame(loop);
@@ -276,6 +296,12 @@ async function loop() {
   }
 
   requestAnimationFrame(loop);
+}
+
+function resetHand() {
+  warmupFrames = 0;
+  startTime = null;
+  widthHistory = [];
 }
 
 // ★幹検出（複数ライン）
