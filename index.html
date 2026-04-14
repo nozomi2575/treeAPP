@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v9.1</title>
+<title>樹種＋直径測定 v9.2</title>
 
 <style>
 body {
@@ -34,17 +34,25 @@ video{
 #sub{font-size:35px;color:gray;}
 #status{font-size:30px;color:yellow;}
 #error{color:red;}
+#progress{
+  height:10px;
+  background:lime;
+  width:0%;
+  margin:10px;
+}
 </style>
 </head>
 
 <body>
 
-<h2>v9.1 安定統合版</h2>
+<h2>v9.2 手登録安定版</h2>
 
 <button id="startBtn">①開始</button>
 <button id="handBtn">②手を登録</button>
 
 <video id="webcam" autoplay playsinline></video>
+
+<div id="progress"></div>
 
 <div class="box">
 <div id="species">---</div>
@@ -67,18 +75,14 @@ let scale=null;
 let baseWidth=null;
 
 let handMode=false;
-let moved=false;
-let lastWidth=null;
-let startTime=null;
 
 let widthHistory=[];
 let diameterHistory=[];
 
 const HAND_CM=8;
-const HOLD_TIME=1200;
 
 // =================
-// カメラ起動（★修正ポイント）
+// カメラ
 // =================
 async function start(){
 
@@ -91,7 +95,7 @@ try{
   status("カメラ起動中");
 
   const stream=await navigator.mediaDevices.getUserMedia({
-    video:{ facingMode:"environment" }, // ★ここだけ重要
+    video:{ facingMode:"environment" },
     audio:false
   });
 
@@ -110,24 +114,23 @@ try{
 }
 
 // =================
-// 手登録（安定版）
+// 手登録（シンプル版）
 // =================
 function hand(){
   handMode=true;
-  moved=false;
-  lastWidth=null;
-  startTime=null;
   widthHistory=[];
-  status("手を一度動かしてください");
+  document.getElementById("progress").style.width="0%";
+  status("手を枠に入れてください");
 }
 
 // =================
-// メインループ
+// ループ
 // =================
 async function loop(){
 
 let w=detect();
 
+// ===== 手登録 =====
 if(handMode){
 
   if(w===0){
@@ -136,41 +139,34 @@ if(handMode){
     return;
   }
 
-  // 動き検出（ゆるめ）
-  if(lastWidth && Math.abs(w-lastWidth)>5){
-    moved=true;
-  }
-  lastWidth=w;
+  widthHistory.push(w);
+  if(widthHistory.length>30)widthHistory.shift();
 
-  if(!moved){
-    status("一度動かしてください");
+  // 進捗バー
+  let progress=Math.min(widthHistory.length/20*100,100);
+  document.getElementById("progress").style.width=progress+"%";
+
+  if(widthHistory.length<20){
+    status("そのままキープしてください");
     requestAnimationFrame(loop);
     return;
   }
 
-  widthHistory.push(w);
-  if(widthHistory.length>20)widthHistory.shift();
-
   let max=Math.max(...widthHistory);
   let min=Math.min(...widthHistory);
 
-  if(max-min<20){
+  if(max-min<25){
 
-    if(!startTime)startTime=Date.now();
+    let m=median(widthHistory);
 
-    let t=Date.now()-startTime;
-    status("固定 "+Math.floor(t/HOLD_TIME*100)+"%");
+    scale=HAND_CM/m;
+    baseWidth=m;
 
-    if(t>HOLD_TIME){
-      let m=median(widthHistory);
-      scale=HAND_CM/m;
-      baseWidth=m;
-      handMode=false;
-      status("登録完了");
-    }
+    handMode=false;
+
+    status("登録完了");
 
   }else{
-    startTime=null;
     status("少し安定させてください");
   }
 
@@ -178,9 +174,7 @@ if(handMode){
   return;
 }
 
-// =================
-// 幹測定
-// =================
+// ===== 幹測定 =====
 if(scale && w>0){
 
   let d=Math.round(w*scale);
@@ -198,9 +192,7 @@ if(scale && w>0){
   status("幹を中央に映してください");
 }
 
-// =================
-// 樹種判別
-// =================
+// ===== 樹種 =====
 if(model){
 let p=await model.predict(video);
 let best=p.sort((a,b)=>b.probability-a.probability)[0];
@@ -212,7 +204,7 @@ requestAnimationFrame(loop);
 }
 
 // =================
-// 幅検出（安定版）
+// 幅検出
 // =================
 function detect(){
 
@@ -230,7 +222,6 @@ let img=ctx.getImageData(0,0,c.width,c.height);
 
 let w=c.width,h=c.height;
 
-// ★中央帯だけ使う（安定）
 let y1=Math.floor(h*0.45);
 let y2=Math.floor(h*0.55);
 
