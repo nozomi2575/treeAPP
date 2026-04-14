@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v7.7</title>
+<title>樹種＋直径測定 v8.0</title>
 
 <style>
 body {
@@ -84,10 +84,10 @@ button {
 
 <body>
 
-<div id="version">v7.7 手登録完全安定版</div>
+<div id="version">v8.0 手登録完全制御版</div>
 
 <div id="instruction">
-①開始 → ②手登録（横向き・1秒以上固定） → ③同じ距離で測定
+①開始 → ②手を一度動かす → ③固定して登録 → ④同距離で測定
 </div>
 
 <button id="startBtn">① ▶開始</button>
@@ -123,12 +123,12 @@ let widthHistory = [];
 
 let handMode = false;
 
-// ★新ロジック
+// ★制御用
 let startTime = null;
-let warmupFrames = 0;
+let moved = false;
+let lastWidth = null;
 
 const REQUIRED_TIME = 1200;
-const WARMUP = 10;
 const HAND_WIDTH_CM = 8;
 
 document.getElementById("startBtn").onclick = init;
@@ -153,9 +153,11 @@ async function init() {
 
 function enterHandMode() {
   handMode = true;
+
   widthHistory = [];
-  warmupFrames = 0;
   startTime = null;
+  moved = false;
+  lastWidth = null;
 
   document.getElementById("handGuide").style.display = "block";
   document.getElementById("status").innerText = "手を枠に入れてください";
@@ -183,6 +185,21 @@ async function loop() {
         return;
       }
 
+      // ★動き検出
+      if (lastWidth !== null) {
+        if (Math.abs(width - lastWidth) > 10) {
+          moved = true;
+        }
+      }
+      lastWidth = width;
+
+      if (!moved) {
+        document.getElementById("status").innerText = "一度手を動かしてください";
+        resetHand();
+        requestAnimationFrame(loop);
+        return;
+      }
+
       if (width < 80) {
         document.getElementById("status").innerText = "手を近づけてください";
         resetHand();
@@ -194,14 +211,6 @@ async function loop() {
         guide.classList.add("ng");
         document.getElementById("status").innerText = "横向きにしてください";
         resetHand();
-        requestAnimationFrame(loop);
-        return;
-      }
-
-      // ウォームアップ
-      warmupFrames++;
-      if (warmupFrames < WARMUP) {
-        document.getElementById("status").innerText = "準備中...";
         requestAnimationFrame(loop);
         return;
       }
@@ -299,7 +308,6 @@ async function loop() {
 }
 
 function resetHand() {
-  warmupFrames = 0;
   startTime = null;
   widthHistory = [];
 }
