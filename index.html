@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>樹種＋直径測定 v9.2</title>
+<title>樹種＋直径測定 v9.3</title>
 
 <style>
 body {
@@ -34,18 +34,13 @@ video{
 #sub{font-size:35px;color:gray;}
 #status{font-size:30px;color:yellow;}
 #error{color:red;}
-#progress{
-  height:10px;
-  background:lime;
-  width:0%;
-  margin:10px;
-}
+#progress{height:10px;background:lime;width:0%;}
 </style>
 </head>
 
 <body>
 
-<h2>v9.2 手登録安定版</h2>
+<h2>v9.3 手検出分離版</h2>
 
 <button id="startBtn">①開始</button>
 <button id="handBtn">②手を登録</button>
@@ -114,7 +109,7 @@ try{
 }
 
 // =================
-// 手登録（シンプル版）
+// 手登録開始
 // =================
 function hand(){
   handMode=true;
@@ -124,11 +119,11 @@ function hand(){
 }
 
 // =================
-// ループ
+// メインループ
 // =================
 async function loop(){
 
-let w=detect();
+let w = handMode ? detectHand() : detectTree();
 
 // ===== 手登録 =====
 if(handMode){
@@ -142,7 +137,6 @@ if(handMode){
   widthHistory.push(w);
   if(widthHistory.length>30)widthHistory.shift();
 
-  // 進捗バー
   let progress=Math.min(widthHistory.length/20*100,100);
   document.getElementById("progress").style.width=progress+"%";
 
@@ -155,7 +149,7 @@ if(handMode){
   let max=Math.max(...widthHistory);
   let min=Math.min(...widthHistory);
 
-  if(max-min<25){
+  if(max-min<30){
 
     let m=median(widthHistory);
 
@@ -204,9 +198,51 @@ requestAnimationFrame(loop);
 }
 
 // =================
-// 幅検出
+// 手検出（明るさ）
 // =================
-function detect(){
+function detectHand(){
+
+if(!video.videoWidth)return 0;
+
+let c=document.createElement("canvas");
+let ctx=c.getContext("2d");
+
+c.width=video.videoWidth;
+c.height=video.videoHeight;
+
+ctx.drawImage(video,0,0);
+
+let img=ctx.getImageData(0,0,c.width,c.height);
+
+let w=c.width,h=c.height;
+let y=Math.floor(h*0.5);
+
+let left=-1,right=-1;
+
+for(let x=0;x<w;x++){
+
+let i=(y*w+x)*4;
+let r=img.data[i];
+let g=img.data[i+1];
+let b=img.data[i+2];
+
+let bright=(r+g+b)/3;
+
+if(bright>80){
+if(left===-1) left=x;
+right=x;
+}
+}
+
+if(left===-1 || right===-1) return 0;
+
+return right-left;
+}
+
+// =================
+// 幹検出（エッジ）
+// =================
+function detectTree(){
 
 if(!video.videoWidth)return 0;
 
